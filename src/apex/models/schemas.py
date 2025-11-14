@@ -127,6 +127,34 @@ class ProjectResponse(ProjectBase):
     model_config = {"from_attributes": True}
 
 
+# Project Access Control Schemas
+
+
+class ProjectAccessGrant(BaseModel):
+    """Schema for granting project access."""
+
+    user_id: UUID
+    role_id: int = Field(..., ge=1, le=3, description="1=Estimator, 2=Manager, 3=Auditor")
+
+
+class ProjectAccessRevoke(BaseModel):
+    """Schema for revoking project access."""
+
+    user_id: UUID
+    role_id: Optional[int] = Field(None, ge=1, le=3, description="Specific role to revoke, or None for all roles")
+
+
+class ProjectAccessResponse(BaseModel):
+    """Response schema for project access operations."""
+
+    project_id: UUID
+    user_id: UUID
+    role_id: int
+    granted: bool = True
+
+    model_config = {"from_attributes": True}
+
+
 # Document Schemas
 
 
@@ -143,6 +171,19 @@ class DocumentCreate(DocumentBase):
     pass
 
 
+class DocumentUploadResponse(BaseModel):
+    """Response schema for document upload."""
+
+    id: UUID
+    project_id: UUID
+    document_type: str
+    blob_path: str
+    validation_status: ValidationStatus
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class DocumentResponse(DocumentBase):
     """Document response schema."""
 
@@ -150,6 +191,7 @@ class DocumentResponse(DocumentBase):
     project_id: UUID
     validation_status: ValidationStatus
     completeness_score: Optional[int] = Field(None, ge=0, le=100)
+    validation_result: Optional[Dict[str, Any]] = None
     created_at: datetime
     created_by_id: UUID
 
@@ -164,6 +206,7 @@ class DocumentValidationResult(BaseModel):
     completeness_score: int = Field(..., ge=0, le=100)
     issues: List[str] = Field(default_factory=list)
     recommendations: List[str] = Field(default_factory=list)
+    suitable_for_estimation: bool
 
 
 # Estimate Schemas

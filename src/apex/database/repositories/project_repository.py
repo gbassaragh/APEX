@@ -111,6 +111,35 @@ class ProjectRepository(BaseRepository[Project]):
         access = db.execute(query).scalar_one_or_none()
         return access is not None
 
+    def check_user_has_role(
+        self,
+        db: Session,
+        user_id: UUID,
+        project_id: UUID,
+        role_id: int,
+    ) -> bool:
+        """
+        Check if user has specific role on project.
+
+        Used for role-based access control (e.g., Manager-only operations).
+
+        Args:
+            db: Database session
+            user_id: User UUID
+            project_id: Project UUID
+            role_id: AppRole ID to check for
+
+        Returns:
+            True if user has the specified role on this project, False otherwise
+        """
+        query = select(ProjectAccess).where(
+            ProjectAccess.user_id == user_id,
+            ProjectAccess.project_id == project_id,
+            ProjectAccess.app_role_id == role_id,
+        )
+        access = db.execute(query).scalar_one_or_none()
+        return access is not None
+
     def get_user_projects(
         self,
         db: Session,

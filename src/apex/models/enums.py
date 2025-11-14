@@ -52,3 +52,15 @@ class TerrainType(str, Enum):
     MOUNTAINOUS = "mountainous"
     URBAN = "urban"
     WETLAND = "wetland"
+
+
+class AppRoleType(int, Enum):
+    """
+    Application role IDs for RBAC.
+
+    These correspond to app_roles table primary keys.
+    """
+
+    ESTIMATOR = 1
+    MANAGER = 2
+    AUDITOR = 3

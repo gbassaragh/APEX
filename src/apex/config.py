@@ -91,6 +91,24 @@ class Config(BaseSettings):
     # Dead Letter Queue
     DLQ_CONTAINER: str = "dead-letter-queue"
 
+    # Document Upload Limits (DoS Protection)
+    MAX_UPLOAD_SIZE_MB: int = 50  # Maximum file size in megabytes
+    ALLOWED_MIME_TYPES: List[str] = [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+        "application/msword",  # .doc
+        "application/vnd.ms-excel",  # .xls
+        "image/png",
+        "image/jpeg",
+        "image/tiff",  # Scanned documents
+    ]
+
+    @property
+    def max_upload_size_bytes(self) -> int:
+        """Convert MB to bytes for FastAPI File validation."""
+        return self.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
     @property
     def database_url(self) -> str:
         """
