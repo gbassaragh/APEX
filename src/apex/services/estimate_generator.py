@@ -230,7 +230,8 @@ class EstimateGenerator:
 
         # STEP 7: Run Monte Carlo analysis
         # TODO (HIGH PRIORITY): Monte Carlo is CPU-bound and blocks event loop.
-        # Production should use: risk_results = await asyncio.to_thread(self.risk_analyzer.run_analysis, ...)
+        # Production should use:
+        #   risk_results = await asyncio.to_thread(self.risk_analyzer.run_analysis, ...)
         # This requires testing to ensure thread safety of NumPy/SciPy operations.
         risk_results = self.risk_analyzer.run_analysis(
             base_cost=float(base_cost),
@@ -239,10 +240,11 @@ class EstimateGenerator:
             confidence_levels=[0.50, confidence_level, 0.95],
         )
 
+        pct = int(confidence_level * 100)
+        p50 = risk_results['percentiles']['p50']
+        target = risk_results['percentiles'][f'p{pct}']
         logger.info(
-            f"Monte Carlo analysis complete: "
-            f"P50=${risk_results['percentiles']['p50']:,.2f}, "
-            f"P{int(confidence_level * 100)}=${risk_results['percentiles'][f'p{int(confidence_level * 100)}']:,.2f}"
+            f"Monte Carlo analysis complete: P50=${p50:,.2f}, P{pct}=${target:,.2f}"
         )
 
         # STEP 8: Compute contingency percentage

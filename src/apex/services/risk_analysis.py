@@ -92,7 +92,8 @@ class MonteCarloRiskAnalyzer:
             Dictionary with analysis results including percentiles and sensitivities
 
         Raises:
-            BusinessRuleViolation: If correlation matrix is invalid (not symmetric, wrong size, etc.)
+            BusinessRuleViolation: If correlation matrix is invalid
+                (not symmetric, wrong size, etc.)
         """
         np.random.seed(self.random_seed)
 
@@ -279,7 +280,8 @@ class MonteCarloRiskAnalyzer:
 
         elif dist == "pert":
             # PERT distribution using Beta distribution
-            # MEDIUM FIX: Proper PERT implementation using scipy.stats.beta instead of triangular approximation
+            # MEDIUM FIX: Proper PERT implementation using scipy.stats.beta
+            # instead of triangular approximation
             if factor.min_value is None or factor.most_likely is None or factor.max_value is None:
                 raise ValueError(f"PERT distribution requires min, likely, max: {factor.name}")
 

@@ -120,11 +120,12 @@ class CircuitBreaker:
                         return True
 
                 # Still in timeout period
+                elapsed = (datetime.utcnow() - self.last_failure_time).total_seconds()
+                remaining = self.timeout_seconds - elapsed
                 raise BusinessRuleViolation(
                     message=(
                         f"Azure Document Intelligence circuit breaker is OPEN. "
-                        f"Service temporarily unavailable. Try again in "
-                        f"{self.timeout_seconds - (datetime.utcnow() - self.last_failure_time).total_seconds():.0f}s"
+                        f"Service temporarily unavailable. Try again in {remaining:.0f}s"
                     ),
                     code="CIRCUIT_BREAKER_OPEN",
                 )
@@ -319,9 +320,9 @@ class DocumentParser:
                 result = await poller.result(timeout=config.AZURE_DI_TIMEOUT)
             except asyncio.TimeoutError:
                 # SDK raises asyncio.TimeoutError on timeout
-                raise TimeoutError(
-                    f"Azure Document Intelligence analysis exceeded {config.AZURE_DI_TIMEOUT}s timeout for {filename}"
-                )
+                timeout = config.AZURE_DI_TIMEOUT
+                msg = f"Azure Document Intelligence analysis exceeded {timeout}s timeout for {filename}"
+                raise TimeoutError(msg)
 
             # Extract structured content
             structured_data = self._extract_structured_content(result, filename)

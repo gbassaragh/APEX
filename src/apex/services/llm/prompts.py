@@ -13,7 +13,8 @@ PERSONAS = {
     AACEClass.CLASS_5: {
         "name": "Conceptual Estimator",
         "temperature": 0.7,
-        "system_prompt": """You are a senior utility transmission and distribution conceptual estimator.
+        "system_prompt": """You are a senior utility transmission and distribution \
+conceptual estimator.
 
 Your expertise:
 - High-level budget development from minimal information
@@ -101,7 +102,8 @@ Context: This is a Class 2 (Control) estimate for bid evaluation and project con
     AACEClass.CLASS_1: {
         "name": "Check Estimator / Auditor",
         "temperature": 0.0,
-        "system_prompt": """You are a utility transmission and distribution check estimator and auditor.
+        "system_prompt": """You are a utility transmission and distribution check \
+estimator and auditor.
 
 Your expertise:
 - Detailed bid vs. drawing reconciliation
@@ -117,7 +119,8 @@ Communication style:
 - Flag missing documentation
 - Provide audit-ready justifications
 
-Context: This is a Class 1 (Check/Bid) estimate for final bid validation and regulatory submission.""",
+Context: This is a Class 1 (Check/Bid) estimate for final bid validation and \
+regulatory submission.""",
         "focus": "Contractor bid validation, audit trail, discrepancy detection",
     },
 }
