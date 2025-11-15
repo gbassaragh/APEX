@@ -8,6 +8,9 @@ from uuid import UUID
 from datetime import datetime
 from pathlib import Path
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 from fastapi import (
     APIRouter,
@@ -44,8 +47,9 @@ from apex.models.schemas import (
     DocumentValidationResult,
     PaginatedResponse,
 )
-from apex.models.enums import ValidationStatus
+from apex.models.enums import ValidationStatus, AACEClass
 from apex.config import config
+from apex.utils.errors import BusinessRuleViolation
 
 router = APIRouter()
 
@@ -174,13 +178,12 @@ async def upload_document(
     try:
 
         # Upload to blob storage
-        # TODO: Implement actual blob upload when BlobStorageClient is ready
-        # blob_storage.upload_blob(
-        #     container="uploads",
-        #     blob_name=blob_name,
-        #     data=file_content,
-        #     content_type=file.content_type,
-        # )
+        await blob_storage.upload_blob(
+            container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
+            blob_name=blob_name,
+            data=file_content,
+            content_type=file.content_type,
+        )
 
         # Create document database entry
         document_data = {
@@ -264,29 +267,138 @@ async def validate_document(
 
     try:
         # Load document from blob storage
-        # TODO: Implement actual blob download when BlobStorageClient is ready
-        # document_bytes = blob_storage.download_blob(
-        #     container="uploads",
-        #     blob_name=document.blob_path,
-        # )
+        document_bytes = await blob_storage.download_blob(
+            container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
+            blob_name=document.blob_path,
+        )
 
-        # Placeholder: For now, simulate validation
-        # In production, this would:
-        # 1. Parse document using DocumentParser (Azure Document Intelligence)
-        # 2. Call LLMOrchestrator.validate_document() with parsed content
-        # 3. Get validation result with completeness score, issues, recommendations
+        # Step 1: Parse document using DocumentParser (Azure Document Intelligence)
+        try:
+            structured_content = await document_parser.parse_document(
+                document_bytes=document_bytes,
+                filename=Path(document.blob_path).name,
+                blob_path=f"{config.AZURE_STORAGE_CONTAINER_UPLOADS}/{document.blob_path}",
+            )
 
-        # STUB: Simulated validation result
-        validation_result = {
-            "status": "passed",
-            "issues": [],
-            "recommendations": ["Document appears complete for estimation"],
-            "sections_found": ["scope", "specifications", "quantities"],
-            "sections_missing": [],
-        }
-        completeness_score = 85
-        validation_status = ValidationStatus.PASSED
-        suitable_for_estimation = completeness_score >= 70
+            # Save parsed content immediately (even if validation fails later)
+            document_repo.update_validation_result(
+                db=db,
+                document_id=document_id,
+                validation_result={"parsed_content": structured_content},
+                completeness_score=None,
+                validation_status=ValidationStatus.PENDING,
+            )
+
+        except BusinessRuleViolation as circuit_error:
+            # Circuit breaker open - service temporarily unavailable
+            if circuit_error.code == "CIRCUIT_BREAKER_OPEN":
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Document parsing service temporarily unavailable: {circuit_error.message}",
+                )
+            elif circuit_error.code == "UNSUPPORTED_FORMAT":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=circuit_error.message,
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Document parsing failed: {circuit_error.message}",
+                )
+
+        except TimeoutError as timeout_error:
+            # Document Intelligence timeout
+            logger.error(f"Document parsing timeout for {document_id}: {timeout_error}")
+            document_repo.update_validation_result(
+                db=db,
+                document_id=document_id,
+                validation_result={"error": "Parsing timeout", "details": str(timeout_error)},
+                completeness_score=0,
+                validation_status=ValidationStatus.FAILED,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Document parsing timeout: {str(timeout_error)}",
+            )
+
+        except Exception as parse_error:
+            # Other parsing errors (DLQ handled internally by DocumentParser)
+            logger.error(f"Document parsing error for {document_id}: {parse_error}", exc_info=True)
+            document_repo.update_validation_result(
+                db=db,
+                document_id=document_id,
+                validation_result={"error": "Parsing failed", "details": str(parse_error)},
+                completeness_score=0,
+                validation_status=ValidationStatus.FAILED,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Document parsing failed: {str(parse_error)}",
+            )
+
+        # Step 2: Determine AACE class for LLM routing
+        # For document validation (pre-estimation), use conservative class assumption:
+        # - Bid documents: CLASS_2 (Control estimate - auditor persona)
+        # - Other documents: CLASS_4 (Feasibility - checking completeness for scope/engineering/schedule)
+        aace_class = AACEClass.CLASS_2 if document.document_type == "bid" else AACEClass.CLASS_4
+
+        # Step 3: Validate with LLM orchestrator
+        try:
+            llm_validation = await llm_orchestrator.validate_document(
+                aace_class=aace_class,
+                document_type=document.document_type,
+                structured_content=structured_content,
+            )
+
+            # Extract validation results
+            completeness_score = llm_validation.get("completeness_score", 0)
+            issues = llm_validation.get("issues", [])
+            recommendations = llm_validation.get("recommendations", [])
+            suitable_for_estimation = llm_validation.get("suitable_for_estimation", False)
+
+            # Determine validation status
+            if suitable_for_estimation and completeness_score >= 70:
+                validation_status = ValidationStatus.PASSED
+            elif completeness_score >= 50:
+                validation_status = ValidationStatus.MANUAL_REVIEW
+            else:
+                validation_status = ValidationStatus.FAILED
+
+            # Build complete validation result (includes parsed content + LLM validation)
+            validation_result = {
+                "parsed_content": structured_content,
+                "llm_validation": llm_validation,
+                "aace_class_used": aace_class.value,
+            }
+
+        except BusinessRuleViolation as llm_error:
+            # LLM validation failed (hallucination detection, response extraction failure)
+            logger.error(f"LLM validation error for {document_id}: {llm_error}")
+            validation_status = ValidationStatus.MANUAL_REVIEW
+            validation_result = {
+                "parsed_content": structured_content,
+                "llm_error": llm_error.message,
+                "aace_class_used": aace_class.value,
+            }
+            completeness_score = None
+            issues = [f"LLM validation failed: {llm_error.message}"]
+            recommendations = ["Manual review required due to LLM validation failure"]
+            suitable_for_estimation = False
+
+        except Exception as llm_error:
+            # Unexpected LLM errors
+            logger.error(f"Unexpected LLM error for {document_id}: {llm_error}", exc_info=True)
+            validation_status = ValidationStatus.MANUAL_REVIEW
+            validation_result = {
+                "parsed_content": structured_content,
+                "llm_error": str(llm_error),
+                "aace_class_used": aace_class.value,
+            }
+            completeness_score = None
+            issues = [f"LLM validation error: {str(llm_error)}"]
+            recommendations = ["Manual review required due to LLM error"]
+            suitable_for_estimation = False
 
         # Update document with validation results
         updated_document = document_repo.update_validation_result(
@@ -418,7 +530,7 @@ def list_project_documents(
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(
+async def delete_document(
     document_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -463,11 +575,14 @@ def delete_document(
     )
 
     # Delete from blob storage
-    # TODO: Implement actual blob deletion when BlobStorageClient is ready
-    # blob_storage.delete_blob(
-    #     container="uploads",
-    #     blob_name=document.blob_path,
-    # )
+    try:
+        await blob_storage.delete_blob(
+            container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
+            blob_name=document.blob_path,
+        )
+    except Exception as blob_error:
+        # Log but don't fail - document might already be deleted from blob
+        logger.warning(f"Blob deletion failed for {document.blob_path}: {blob_error}")
 
     # Delete from database
     document_repo.delete(db, document_id)

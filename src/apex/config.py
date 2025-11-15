@@ -64,6 +64,13 @@ class Config(BaseSettings):
     AZURE_DI_CIRCUIT_BREAKER_THRESHOLD: int = 5  # Failures before circuit opens
     AZURE_DI_CIRCUIT_BREAKER_TIMEOUT: int = 60  # Seconds before retry
 
+    # Azure AD Authentication (OAuth 2.0)
+    AZURE_AD_TENANT_ID: str  # Azure AD tenant ID
+    AZURE_AD_CLIENT_ID: str  # Application (client) ID for APEX backend
+    AZURE_AD_ISSUER: Optional[str] = None  # Token issuer (defaults to https://sts.windows.net/{tenant_id}/)
+    AZURE_AD_AUDIENCE: Optional[str] = None  # Expected audience claim (defaults to client_id)
+    AZURE_AD_JWKS_CACHE_TTL: int = 600  # JWKS key cache TTL in seconds (10 minutes)
+
     # LLM Configuration
     LLM_MAX_CONTEXT_TOKENS: int = 128000  # GPT-4 context window
     LLM_RESPONSE_BUFFER_TOKENS: int = 4000  # Reserve for response
@@ -123,6 +130,40 @@ class Config(BaseSettings):
             f"?driver={self.AZURE_SQL_DRIVER.replace(' ', '+')}"
             f"&Authentication=ActiveDirectoryMsi"
         )
+
+    @property
+    def azure_ad_issuer_url(self) -> str:
+        """
+        Construct Azure AD token issuer URL.
+
+        Returns:
+            Issuer URL for JWT validation
+        """
+        if self.AZURE_AD_ISSUER:
+            return self.AZURE_AD_ISSUER
+        return f"https://sts.windows.net/{self.AZURE_AD_TENANT_ID}/"
+
+    @property
+    def azure_ad_audience_value(self) -> str:
+        """
+        Get expected audience claim value.
+
+        Returns:
+            Audience value for JWT validation (defaults to client_id)
+        """
+        if self.AZURE_AD_AUDIENCE:
+            return self.AZURE_AD_AUDIENCE
+        return self.AZURE_AD_CLIENT_ID
+
+    @property
+    def azure_ad_jwks_uri(self) -> str:
+        """
+        Construct Azure AD JWKS (JSON Web Key Set) URI for public key retrieval.
+
+        Returns:
+            JWKS endpoint URL for JWT signature validation
+        """
+        return f"https://login.microsoftonline.com/{self.AZURE_AD_TENANT_ID}/discovery/v2.0/keys"
 
 
 # Global config instance

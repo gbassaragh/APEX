@@ -1,0 +1,340 @@
+name: APEX CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  PYTHON_VERSION: '3.11'
+  REGISTRY: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+  IMAGE_NAME: apex-backend
+
+jobs:
+  # ============================================================================
+  # Job 1: Code Quality & Security Scanning
+  # ============================================================================
+  code-quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install black isort flake8 bandit
+
+      - name: Check code formatting (Black)
+        run: black src/ tests/ --check --line-length 100
+
+      - name: Check import ordering (isort)
+        run: isort src/ tests/ --check-only --profile black
+
+      - name: Lint with Flake8
+        run: flake8 src/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+
+      - name: Security scan with Bandit
+        run: bandit -r src/ -f json -o bandit-report.json || true
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+
+  # ============================================================================
+  # Job 2: Unit & Integration Tests
+  # ============================================================================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Run unit tests
+        run: pytest tests/unit/ -v --cov=apex --cov-report=xml --cov-report=term
+
+      - name: Run integration tests
+        run: pytest tests/integration/ -v --cov=apex --cov-report=xml --cov-report=term --cov-append
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage.xml
+          flags: unittests,integrationtests
+          name: apex-coverage
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-results
+          path: |
+            coverage.xml
+            .coverage
+
+  # ============================================================================
+  # Job 3: Build Docker Image
+  # ============================================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+          username: ${{ secrets.AZURE_ACR_USERNAME }}
+          password: ${{ secrets.AZURE_ACR_PASSWORD }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Image vulnerability scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.tags }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # ============================================================================
+  # Job 4: Deploy to Development
+  # ============================================================================
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: development
+      url: https://apex-dev.azurecontainerapps.io
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_DEV }}
+
+      - name: Deploy infrastructure (Bicep)
+        run: |
+          cd infra
+          chmod +x deploy.sh
+          ./deploy.sh dev apex-rg-dev
+
+      - name: Update Container App with new image
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az containerapp update \
+              --name apex-backend-dev \
+              --resource-group apex-rg-dev \
+              --image ${{ needs.build.outputs.image-tag }}
+
+      - name: Run database migrations
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Run migrations via Azure Container Apps job or exec
+            echo "TODO: Implement Alembic migrations via container exec"
+            # az containerapp exec --name apex-backend-dev --resource-group apex-rg-dev --command "alembic upgrade head"
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl -f https://apex-dev.azurecontainerapps.io/health/ready || exit 1
+
+  # ============================================================================
+  # Job 5: Deploy to Staging
+  # ============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, deploy-dev]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    environment:
+      name: staging
+      url: https://apex-staging.azurecontainerapps.io
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_STAGING }}
+
+      - name: Deploy infrastructure (Bicep)
+        run: |
+          cd infra
+          chmod +x deploy.sh
+          ./deploy.sh staging apex-rg-staging
+
+      - name: Update Container App with new image
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az containerapp update \
+              --name apex-backend-staging \
+              --resource-group apex-rg-staging \
+              --image ${{ needs.build.outputs.image-tag }}
+
+      - name: Run database migrations
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            echo "TODO: Implement Alembic migrations"
+
+      - name: Smoke tests
+        run: |
+          sleep 30
+          curl -f https://apex-staging.azurecontainerapps.io/health/ready || exit 1
+
+  # ============================================================================
+  # Job 6: Deploy to Production (Manual Approval Required)
+  # ============================================================================
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, deploy-staging]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    environment:
+      name: production
+      url: https://apex.azurecontainerapps.io
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_PROD }}
+
+      - name: Production deployment confirmation
+        run: |
+          echo "⚠️ Deploying to PRODUCTION environment"
+          echo "Image: ${{ needs.build.outputs.image-tag }}"
+          echo "Digest: ${{ needs.build.outputs.image-digest }}"
+
+      - name: Deploy infrastructure (Bicep)
+        run: |
+          cd infra
+          chmod +x deploy.sh
+          ./deploy.sh prod apex-rg-prod
+
+      - name: Blue-Green deployment (Container App)
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Create new revision with traffic weight 0
+            az containerapp update \
+              --name apex-backend-prod \
+              --resource-group apex-rg-prod \
+              --image ${{ needs.build.outputs.image-tag }} \
+              --revision-suffix $(date +%Y%m%d-%H%M%S)
+
+            # TODO: Implement gradual traffic shifting (10% -> 50% -> 100%)
+            # TODO: Implement automated rollback on health check failure
+
+      - name: Run database migrations
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            echo "TODO: Implement Alembic migrations"
+
+      - name: Production health checks
+        run: |
+          sleep 60
+          curl -f https://apex.azurecontainerapps.io/health/ready || exit 1
+          curl -f https://apex.azurecontainerapps.io/health/live || exit 1
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Production deployment successful"
+          # TODO: Send notification (Slack, Teams, email)
+
+      - name: Rollback on failure
+        if: failure()
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            echo "❌ Deployment failed, initiating rollback"
+            # TODO: Implement automatic rollback to previous revision

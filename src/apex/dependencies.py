@@ -5,13 +5,61 @@ CRITICAL: This module defines the session management pattern.
 All database operations MUST use the get_db() dependency.
 """
 from typing import Generator
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 import logging
+import jwt
+from jwt import PyJWKClient
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 
 from apex.database.connection import SessionLocal
+from apex.config import config
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# Azure AD JWT Validation
+# ============================================================================
+
+# HTTPBearer security scheme for JWT token extraction
+security = HTTPBearer(
+    scheme_name="Azure AD Bearer Token",
+    description="Azure AD OAuth 2.0 JWT token in Authorization header",
+)
+
+# JWKS Client (singleton) for JWT signature validation
+# Caches public keys from Azure AD to avoid fetching on every request
+_jwks_client: PyJWKClient | None = None
+
+
+def _get_jwks_client() -> PyJWKClient:
+    """
+    Get or create JWKS client for JWT signature validation.
+
+    Uses module-level singleton to avoid creating new client on every request.
+    Client automatically caches keys and handles key rotation.
+
+    Returns:
+        PyJWKClient instance configured for Azure AD
+    """
+    global _jwks_client
+
+    if _jwks_client is None:
+        _jwks_client = PyJWKClient(
+            uri=config.azure_ad_jwks_uri,
+            cache_keys=True,
+            max_cached_keys=10,
+            cache_jwk_set=True,
+            lifespan=config.AZURE_AD_JWKS_CACHE_TTL,
+        )
+        logger.info(
+            "Initialized JWKS client for Azure AD: %s",
+            config.azure_ad_jwks_uri,
+        )
+
+    return _jwks_client
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -85,12 +133,20 @@ def get_audit_repo():
 
 
 def get_llm_orchestrator():
-    """Get LLMOrchestrator instance."""
-    from apex.services.llm.orchestrator import LLMOrchestrator
-    from apex.config import config
+    """
+    Get LLMOrchestrator instance.
 
-    # TODO: Initialize with actual Azure OpenAI client when ready
-    return LLMOrchestrator(config=config, client=None, logger=logger)
+    LLMOrchestrator uses lazy initialization for Azure OpenAI client.
+    Client is created on first use with Managed Identity authentication.
+
+    Returns:
+        LLMOrchestrator instance (client initialized on first LLM call)
+    """
+    from apex.services.llm.orchestrator import LLMOrchestrator
+
+    # LLMOrchestrator handles its own Azure OpenAI client initialization
+    # Uses AsyncAzureOpenAI with Managed Identity auth (lazy pattern)
+    return LLMOrchestrator()
 
 
 def get_risk_analyzer():
@@ -174,42 +230,169 @@ def get_blob_storage():
 # Authentication & Authorization Dependencies
 
 
-def get_current_user(db: Session = Depends(get_db)):
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
     """
-    Get current authenticated user from request context.
+    Get current authenticated user from Azure AD JWT token.
 
-    TODO: Implement actual Azure AD token validation:
+    Validates JWT token from Authorization header and returns authenticated User entity.
+    Implements Just-In-Time (JIT) user provisioning - creates User on first login.
+
+    Process:
     1. Extract Bearer token from Authorization header
-    2. Validate token with Azure AD
-    3. Extract user claims (aad_object_id, email)
-    4. Load or create User entity from database
-    5. Return User entity
+    2. Validate JWT signature using Azure AD public keys (JWKS)
+    3. Verify token claims (issuer, audience, expiration)
+    4. Extract user identity from claims (oid, email, name)
+    5. Load or create User entity in database
+    6. Return authenticated User
 
-    For now, this returns a stub user for development/testing.
-    DO NOT deploy to production without implementing actual auth.
+    Args:
+        credentials: HTTP Bearer credentials from Authorization header
+        db: Database session (dependency injected)
+
+    Returns:
+        User: Authenticated user entity from database
+
+    Raises:
+        HTTPException: 401 Unauthorized if token is invalid/expired/missing claims
+        HTTPException: 500 Internal Server Error if user creation fails
+
+    Security:
+        - JWT signature validated against Azure AD public keys
+        - Issuer claim validated (prevents token forgery)
+        - Audience claim validated (prevents token reuse attacks)
+        - Expiration claim validated (prevents replay attacks)
+        - JWKS keys cached for performance (10-minute TTL)
+        - User identified by aad_object_id (immutable, unique per AAD tenant)
     """
     from apex.models.database import User
-    import uuid
 
-    # STUB: Return test user for development
-    # This is a placeholder until Azure AD integration is implemented
-    logger.warning("Using stub user - implement Azure AD auth before production")
+    token = credentials.credentials
 
-    # Check if test user exists, create if not
-    test_user = (
-        db.query(User)
-        .filter(User.email == "test@example.com")
-        .one_or_none()
-    )
+    try:
+        # Get signing key from JWKS endpoint (cached)
+        jwks_client = _get_jwks_client()
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
 
-    if not test_user:
-        test_user = User(
-            id=uuid.uuid4(),
-            aad_object_id="00000000-0000-0000-0000-000000000000",
-            email="test@example.com",
-            name="Test User",
+        # Decode and validate JWT
+        decoded = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=config.azure_ad_audience_value,
+            issuer=config.azure_ad_issuer_url,
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_aud": True,
+                "verify_iss": True,
+                "require": ["exp", "iss", "aud", "oid"],  # Required claims
+            },
         )
-        db.add(test_user)
-        db.flush()
 
-    return test_user
+    except ExpiredSignatureError:
+        logger.warning("JWT token expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired. Please re-authenticate.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    except InvalidTokenError as exc:
+        logger.warning("Invalid JWT token: %s", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    except Exception as exc:
+        logger.error("JWT validation error: %s", str(exc), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Extract user identity from token claims
+    aad_object_id = decoded.get("oid")  # Azure AD object ID (required)
+    email = decoded.get("email") or decoded.get("preferred_username")
+    name = decoded.get("name")
+
+    if not aad_object_id:
+        logger.error("JWT token missing required 'oid' claim")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing user identifier",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Load or create user (Just-In-Time provisioning)
+    try:
+        user = db.execute(
+            select(User).where(User.aad_object_id == aad_object_id)
+        ).scalar_one_or_none()
+
+        if user is None:
+            # Create new user on first login
+            logger.info(
+                "Creating new user via JIT provisioning: aad_object_id=%s, email=%s",
+                aad_object_id,
+                email,
+            )
+            user = User(
+                aad_object_id=aad_object_id,
+                email=email,
+                name=name,
+            )
+            db.add(user)
+            db.flush()  # Get ID without committing (commit handled by get_db())
+
+        else:
+            # Update user info if changed in Azure AD
+            updated = False
+            if email and user.email != email:
+                logger.info(
+                    "Updating user email: %s -> %s (aad_object_id=%s)",
+                    user.email,
+                    email,
+                    aad_object_id,
+                )
+                user.email = email
+                updated = True
+
+            if name and user.name != name:
+                logger.info(
+                    "Updating user name: %s -> %s (aad_object_id=%s)",
+                    user.name,
+                    name,
+                    aad_object_id,
+                )
+                user.name = name
+                updated = True
+
+            if updated:
+                db.flush()
+
+        logger.debug(
+            "Authenticated user: id=%s, aad_object_id=%s, email=%s",
+            user.id,
+            user.aad_object_id,
+            user.email,
+        )
+
+        return user
+
+    except Exception as exc:
+        logger.error(
+            "Failed to load/create user for aad_object_id=%s: %s",
+            aad_object_id,
+            str(exc),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during authentication",
+        )
