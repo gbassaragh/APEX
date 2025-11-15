@@ -178,7 +178,7 @@ async def upload_document(
     try:
 
         # Upload to blob storage
-        await blob_storage.upload_blob(
+        await blob_storage.upload_document(
             container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
             blob_name=blob_name,
             data=file_content,
@@ -267,7 +267,7 @@ async def validate_document(
 
     try:
         # Load document from blob storage
-        document_bytes = await blob_storage.download_blob(
+        document_bytes = await blob_storage.download_document(
             container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
             blob_name=document.blob_path,
         )
@@ -576,7 +576,7 @@ async def delete_document(
 
     # Delete from blob storage
     try:
-        await blob_storage.delete_blob(
+        await blob_storage.delete_document(
             container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
             blob_name=document.blob_path,
         )
