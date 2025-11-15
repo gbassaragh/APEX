@@ -7,23 +7,18 @@ fatal errors (fail fast without retry).
 import asyncio
 import functools
 import logging
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
+
 from azure.core.exceptions import (
-    AzureError,
-    ServiceRequestError,
-    ServiceResponseError,
-    HttpResponseError,
-    ServiceRequestTimeoutError,
     ClientAuthenticationError,
-    ResourceNotFoundError,
+    HttpResponseError,
     ResourceExistsError,
     ResourceModifiedError,
+    ResourceNotFoundError,
+    ServiceRequestError,
+    ServiceRequestTimeoutError,
+    ServiceResponseError,
 )
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +85,7 @@ def azure_retry(func):
             except FATAL_ERRORS as e:
                 # Log fatal error and fail immediately
                 logger.error(
-                    f"Fatal error in {func.__name__}: {e.__class__.__name__}: {e}. "
-                    "Not retrying."
+                    f"Fatal error in {func.__name__}: {e.__class__.__name__}: {e}. " "Not retrying."
                 )
                 raise
 
@@ -116,8 +110,7 @@ def azure_retry(func):
             except FATAL_ERRORS as e:
                 # Log fatal error and fail immediately
                 logger.error(
-                    f"Fatal error in {func.__name__}: {e.__class__.__name__}: {e}. "
-                    "Not retrying."
+                    f"Fatal error in {func.__name__}: {e.__class__.__name__}: {e}. " "Not retrying."
                 )
                 raise
 

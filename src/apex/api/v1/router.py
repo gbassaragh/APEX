@@ -2,7 +2,8 @@
 Main API router aggregating all v1 endpoints.
 """
 from fastapi import APIRouter
-from apex.api.v1 import health, projects, documents, estimates
+
+from apex.api.v1 import documents, estimates, health, projects
 
 api_router = APIRouter()
 

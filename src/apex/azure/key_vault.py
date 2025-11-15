@@ -4,9 +4,11 @@ Azure Key Vault client wrapper (optional).
 CRITICAL: This is a synchronous client. For async operations, create async version.
 """
 from typing import Optional
+
 from azure.keyvault.secrets import SecretClient
-from apex.config import config
+
 from apex.azure.auth import get_azure_credential_sync
+from apex.config import config
 from apex.utils.retry import azure_retry
 
 

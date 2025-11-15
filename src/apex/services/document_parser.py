@@ -7,17 +7,16 @@ Dead letter queue for failed documents.
 """
 import asyncio
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, Optional
 
 from azure.ai.documentintelligence.aio import DocumentIntelligenceClient
 from azure.core.exceptions import HttpResponseError
 
-from apex.config import config
 from apex.azure.auth import get_azure_credential
 from apex.azure.blob_storage import BlobStorageClient
-from apex.utils.retry import azure_retry
+from apex.config import config
 from apex.utils.errors import BusinessRuleViolation
 
 logger = logging.getLogger(__name__)
@@ -25,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class CircuitState(Enum):
     """Circuit breaker states for Azure Document Intelligence."""
+
     CLOSED = "closed"  # Normal operation
     OPEN = "open"  # Failing, reject requests
     HALF_OPEN = "half_open"  # Testing recovery
@@ -126,7 +126,7 @@ class CircuitBreaker:
                         f"Service temporarily unavailable. Try again in "
                         f"{self.timeout_seconds - (datetime.utcnow() - self.last_failure_time).total_seconds():.0f}s"
                     ),
-                    code="CIRCUIT_BREAKER_OPEN"
+                    code="CIRCUIT_BREAKER_OPEN",
                 )
 
             # HALF_OPEN - allow only ONE probe request
@@ -135,7 +135,7 @@ class CircuitBreaker:
                     # Probe already in progress - reject this request
                     raise BusinessRuleViolation(
                         message="Circuit breaker probe in progress, please retry shortly",
-                        code="CIRCUIT_BREAKER_PROBE_ACTIVE"
+                        code="CIRCUIT_BREAKER_PROBE_ACTIVE",
                     )
                 else:
                     # This is the probe request
@@ -190,8 +190,7 @@ class DocumentParser:
         if self._di_client is None:
             credential = await get_azure_credential()
             self._di_client = DocumentIntelligenceClient(
-                endpoint=config.AZURE_DI_ENDPOINT,
-                credential=credential
+                endpoint=config.AZURE_DI_ENDPOINT, credential=credential
             )
             logger.info(f"Initialized DocumentIntelligenceClient for {config.AZURE_DI_ENDPOINT}")
 
@@ -205,10 +204,7 @@ class DocumentParser:
         return self._blob_client
 
     async def parse_document(
-        self,
-        document_bytes: bytes,
-        filename: str,
-        blob_path: Optional[str] = None
+        self, document_bytes: bytes, filename: str, blob_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Parse document and extract structured content.
@@ -246,22 +242,22 @@ class DocumentParser:
             # }
             ```
         """
-        file_ext = filename.lower().split('.')[-1]
+        file_ext = filename.lower().split(".")[-1]
 
         logger.info(f"Parsing document: {filename} ({len(document_bytes)} bytes, type: {file_ext})")
 
         try:
-            if file_ext == 'pdf':
+            if file_ext == "pdf":
                 return await self._parse_pdf_with_azure_di(document_bytes, filename, blob_path)
-            elif file_ext in ['xlsx', 'xls']:
+            elif file_ext in ["xlsx", "xls"]:
                 return await self._parse_excel(document_bytes, filename)
-            elif file_ext in ['docx', 'doc']:
+            elif file_ext in ["docx", "doc"]:
                 return await self._parse_word(document_bytes, filename)
             else:
                 # Unsupported format - don't DLQ, this is user error not document failure
                 raise BusinessRuleViolation(
                     message=f"Unsupported file format: .{file_ext}. Supported: PDF, Excel, Word",
-                    code="UNSUPPORTED_FORMAT"
+                    code="UNSUPPORTED_FORMAT",
                 )
 
         except BusinessRuleViolation:
@@ -284,10 +280,7 @@ class DocumentParser:
             raise
 
     async def _parse_pdf_with_azure_di(
-        self,
-        document_bytes: bytes,
-        filename: str,
-        blob_path: Optional[str]
+        self, document_bytes: bytes, filename: str, blob_path: Optional[str]
     ) -> Dict[str, Any]:
         """
         Parse PDF using Azure Document Intelligence.
@@ -318,9 +311,7 @@ class DocumentParser:
             # Begin analysis with prebuilt-layout model
             # Use document= parameter with content_type for raw bytes
             poller = await client.begin_analyze_document(
-                model_id="prebuilt-layout",
-                document=document_bytes,
-                content_type="application/pdf"
+                model_id="prebuilt-layout", document=document_bytes, content_type="application/pdf"
             )
 
             # Use SDK's built-in polling with timeout (replaces custom _poll_with_timeout)
@@ -377,60 +368,68 @@ class DocumentParser:
             "tables": [],
             "paragraphs": [],
             "metadata": {
-                "page_count": len(result.pages) if hasattr(result, 'pages') else 0,
+                "page_count": len(result.pages) if hasattr(result, "pages") else 0,
                 "model_id": "prebuilt-layout",
-                "api_version": result.api_version if hasattr(result, 'api_version') else None
-            }
+                "api_version": result.api_version if hasattr(result, "api_version") else None,
+            },
         }
 
         # Extract pages
-        if hasattr(result, 'pages'):
+        if hasattr(result, "pages"):
             for page in result.pages:
                 page_data = {
                     "page_number": page.page_number,
-                    "width": page.width if hasattr(page, 'width') else None,
-                    "height": page.height if hasattr(page, 'height') else None,
-                    "unit": page.unit if hasattr(page, 'unit') else None,
-                    "lines": []
+                    "width": page.width if hasattr(page, "width") else None,
+                    "height": page.height if hasattr(page, "height") else None,
+                    "unit": page.unit if hasattr(page, "unit") else None,
+                    "lines": [],
                 }
 
                 # Extract lines (text content)
-                if hasattr(page, 'lines'):
+                if hasattr(page, "lines"):
                     for line in page.lines:
-                        page_data["lines"].append({
-                            "content": line.content,
-                            "polygon": line.polygon if hasattr(line, 'polygon') else None
-                        })
+                        page_data["lines"].append(
+                            {
+                                "content": line.content,
+                                "polygon": line.polygon if hasattr(line, "polygon") else None,
+                            }
+                        )
 
                 structured["pages"].append(page_data)
 
         # Extract tables
-        if hasattr(result, 'tables'):
+        if hasattr(result, "tables"):
             for table in result.tables:
                 table_data = {
-                    "row_count": table.row_count if hasattr(table, 'row_count') else 0,
-                    "column_count": table.column_count if hasattr(table, 'column_count') else 0,
-                    "cells": []
+                    "row_count": table.row_count if hasattr(table, "row_count") else 0,
+                    "column_count": table.column_count if hasattr(table, "column_count") else 0,
+                    "cells": [],
                 }
 
-                if hasattr(table, 'cells'):
+                if hasattr(table, "cells"):
                     for cell in table.cells:
-                        table_data["cells"].append({
-                            "row_index": cell.row_index if hasattr(cell, 'row_index') else None,
-                            "column_index": cell.column_index if hasattr(cell, 'column_index') else None,
-                            "content": cell.content,
-                            "kind": cell.kind if hasattr(cell, 'kind') else None
-                        })
+                        table_data["cells"].append(
+                            {
+                                "row_index": cell.row_index if hasattr(cell, "row_index") else None,
+                                "column_index": cell.column_index
+                                if hasattr(cell, "column_index")
+                                else None,
+                                "content": cell.content,
+                                "kind": cell.kind if hasattr(cell, "kind") else None,
+                            }
+                        )
 
                 structured["tables"].append(table_data)
 
         # Extract paragraphs
-        if hasattr(result, 'paragraphs'):
+        if hasattr(result, "paragraphs"):
             for paragraph in result.paragraphs:
-                structured["paragraphs"].append({
-                    "content": paragraph.content,
-                    "role": paragraph.role if hasattr(paragraph, 'role') else None
-                })
+                structured["paragraphs"].append(
+                    {
+                        "content": paragraph.content,
+                        "role": paragraph.role if hasattr(paragraph, "role") else None,
+                    }
+                )
 
         return structured
 
@@ -459,7 +458,7 @@ class DocumentParser:
         return {
             "filename": filename,
             "sheets": [],
-            "metadata": {"format": "excel", "status": "not_implemented"}
+            "metadata": {"format": "excel", "status": "not_implemented"},
         }
 
     async def _parse_word(self, document_bytes: bytes, filename: str) -> Dict[str, Any]:
@@ -488,14 +487,11 @@ class DocumentParser:
             "filename": filename,
             "paragraphs": [],
             "tables": [],
-            "metadata": {"format": "word", "status": "not_implemented"}
+            "metadata": {"format": "word", "status": "not_implemented"},
         }
 
     async def _handle_parsing_failure(
-        self,
-        blob_path: str,
-        filename: str,
-        exception: Exception
+        self, blob_path: str, filename: str, exception: Exception
     ) -> None:
         """
         Handle parsing failure by moving document to dead letter queue.
@@ -507,7 +503,7 @@ class DocumentParser:
         """
         try:
             # Parse blob path
-            parts = blob_path.split('/', 1)
+            parts = blob_path.split("/", 1)
             if len(parts) != 2:
                 logger.error(f"Invalid blob path format: {blob_path}")
                 return
@@ -520,7 +516,7 @@ class DocumentParser:
                 "error_message": str(exception),
                 "timestamp": datetime.utcnow().isoformat(),
                 "filename": filename,
-                "operation": "document_parsing"
+                "operation": "document_parsing",
             }
 
             # Move to DLQ (await blob client getter)
@@ -528,7 +524,7 @@ class DocumentParser:
             dlq_path = await blob_client.move_to_dead_letter_queue(
                 source_container=source_container,
                 source_blob=source_blob,
-                error_details=error_details
+                error_details=error_details,
             )
 
             logger.info(f"Moved failed document to DLQ: {blob_path} → {dlq_path}")

@@ -7,8 +7,9 @@ Tests the critical get_db() dependency pattern that ensures:
 3. Automatic rollback on error
 4. No leaked connections
 """
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 from sqlalchemy.orm import Session
 
 from apex.dependencies import get_db
@@ -221,6 +222,6 @@ class TestSessionIsolation:
             # Second request gets new session
             mock_session_local.return_value = Mock(spec=Session)
             gen2 = get_db()
-            session2 = next(gen2)
+            next(gen2)
 
             assert mock_session_local.call_count == 2

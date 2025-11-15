@@ -14,10 +14,11 @@ Classification Logic:
 - Uses weighted score: 60% engineering maturity + 40% document completeness
 - Thresholds: ≥90% = Class 1, ≥70% = Class 2, ≥50% = Class 3, ≥30% = Class 4, <30% = Class 5
 """
-from typing import Dict, List, Tuple, Any
+import logging
+from typing import Any, Dict, List, Tuple
+
 from apex.models.enums import AACEClass
 from apex.utils.errors import BusinessRuleViolation
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +55,13 @@ class AACEClassifier:
         if not (0 <= engineering_maturity_pct <= 100):
             raise BusinessRuleViolation(
                 message=f"Engineering maturity must be 0-100, got {engineering_maturity_pct}",
-                code="INVALID_ENGINEERING_MATURITY"
+                code="INVALID_ENGINEERING_MATURITY",
             )
 
         if not (0 <= completeness_score <= 100):
             raise BusinessRuleViolation(
                 message=f"Completeness score must be 0-100, got {completeness_score}",
-                code="INVALID_COMPLETENESS_SCORE"
+                code="INVALID_COMPLETENESS_SCORE",
             )
 
         logger.info(
@@ -249,9 +250,7 @@ class AACEClassifier:
         key_docs = {"scope", "engineering", "schedule", "bid"}
         missing = key_docs - set(available_deliverables)
         if missing:
-            recommendations.append(
-                f"Obtain missing deliverables: {', '.join(sorted(missing))}"
-            )
+            recommendations.append(f"Obtain missing deliverables: {', '.join(sorted(missing))}")
 
         # Class-specific recommendations
         if aace_class == AACEClass.CLASS_5:
@@ -267,7 +266,9 @@ class AACEClassifier:
             recommendations.append("Obtain vendor quotes for major equipment")
 
         elif aace_class == AACEClass.CLASS_2:
-            recommendations.append("Complete final engineering and construction drawings for Class 1")
+            recommendations.append(
+                "Complete final engineering and construction drawings for Class 1"
+            )
             recommendations.append("Obtain contractor bids for validation")
 
         return recommendations

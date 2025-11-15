@@ -11,15 +11,14 @@ CBS/WBS Hierarchy:
 - Sets _temp_parent_ref attribute (e.g., "10" for child "10-100")
 - EstimateRepository persists parent_line_item_id GUIDs in transaction
 """
-from decimal import Decimal
-from typing import Dict, Any, List, Tuple, Optional
 import logging
+from decimal import Decimal
+from typing import Any, Dict, List, Tuple
 
 from sqlalchemy.orm import Session
 
-from apex.models.database import Project, Document, EstimateLineItem, CostCode
+from apex.models.database import CostCode, Document, EstimateLineItem, Project
 from apex.models.enums import TerrainType
-from apex.utils.errors import BusinessRuleViolation
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +158,10 @@ class CostDatabaseService:
             }
 
             # Foundation (1 per structure, varies by terrain)
-            total_structures = quantities["tangent_structures"]["quantity"] + quantities["dead_end_structures"]["quantity"]
+            total_structures = (
+                quantities["tangent_structures"]["quantity"]
+                + quantities["dead_end_structures"]["quantity"]
+            )
             quantities["foundations"] = {
                 "quantity": total_structures,
                 "unit": "EA",
@@ -224,13 +226,15 @@ class CostDatabaseService:
             elif "clearing" in key.lower():
                 cost_code_id = "30-100"
 
-            cost_items.append({
-                "component_key": key,
-                "cost_code_id": cost_code_id,
-                "description": qty_data["description"],
-                "quantity": qty_data["quantity"],
-                "unit_of_measure": qty_data["unit"],
-            })
+            cost_items.append(
+                {
+                    "component_key": key,
+                    "cost_code_id": cost_code_id,
+                    "description": qty_data["description"],
+                    "quantity": qty_data["quantity"],
+                    "unit_of_measure": qty_data["unit"],
+                }
+            )
 
         logger.info(f"Mapped to {len(cost_items)} cost items")
 
@@ -256,11 +260,31 @@ class CostDatabaseService:
 
         # MVP: Sample unit costs (production would query database)
         sample_unit_costs = {
-            "10-100": {"material": Decimal("15000"), "labor": Decimal("8000"), "other": Decimal("2000")},  # Tangent structure
-            "10-200": {"material": Decimal("22000"), "labor": Decimal("12000"), "other": Decimal("3000")},  # Dead-end structure
-            "10-300": {"material": Decimal("3000"), "labor": Decimal("4000"), "other": Decimal("500")},  # Foundation
-            "20-100": {"material": Decimal("1.50"), "labor": Decimal("0.75"), "other": Decimal("0.25")},  # Conductor per LF
-            "30-100": {"material": Decimal("500"), "labor": Decimal("1000"), "other": Decimal("200")},  # ROW clearing per acre
+            "10-100": {
+                "material": Decimal("15000"),
+                "labor": Decimal("8000"),
+                "other": Decimal("2000"),
+            },  # Tangent structure
+            "10-200": {
+                "material": Decimal("22000"),
+                "labor": Decimal("12000"),
+                "other": Decimal("3000"),
+            },  # Dead-end structure
+            "10-300": {
+                "material": Decimal("3000"),
+                "labor": Decimal("4000"),
+                "other": Decimal("500"),
+            },  # Foundation
+            "20-100": {
+                "material": Decimal("1.50"),
+                "labor": Decimal("0.75"),
+                "other": Decimal("0.25"),
+            },  # Conductor per LF
+            "30-100": {
+                "material": Decimal("500"),
+                "labor": Decimal("1000"),
+                "other": Decimal("200"),
+            },  # ROW clearing per acre
         }
 
         for item in cost_items:
@@ -271,10 +295,14 @@ class CostDatabaseService:
                 item["unit_cost_material"] = unit_cost["material"]
                 item["unit_cost_labor"] = unit_cost["labor"]
                 item["unit_cost_other"] = unit_cost["other"]
-                item["unit_cost_total"] = unit_cost["material"] + unit_cost["labor"] + unit_cost["other"]
+                item["unit_cost_total"] = (
+                    unit_cost["material"] + unit_cost["labor"] + unit_cost["other"]
+                )
             else:
                 # Fallback for unknown cost codes
-                logger.warning(f"No unit cost found for cost code {cost_code_id}, using placeholder")
+                logger.warning(
+                    f"No unit cost found for cost code {cost_code_id}, using placeholder"
+                )
                 item["unit_cost_material"] = Decimal("1000")
                 item["unit_cost_labor"] = Decimal("500")
                 item["unit_cost_other"] = Decimal("100")
@@ -304,7 +332,9 @@ class CostDatabaseService:
         Returns:
             Cost items with adjusted unit costs
         """
-        logger.info(f"Applying adjustments for terrain={project.terrain_type}, voltage={project.voltage_level}kV")
+        logger.info(
+            f"Applying adjustments for terrain={project.terrain_type}, voltage={project.voltage_level}kV"
+        )
 
         # Terrain difficulty multipliers
         terrain_multipliers = {
@@ -403,8 +433,7 @@ class CostDatabaseService:
 
             # Calculate parent total
             parent_total = sum(
-                Decimal(str(child["quantity"])) * child["unit_cost_total"]
-                for child in children
+                Decimal(str(child["quantity"])) * child["unit_cost_total"] for child in children
             )
 
             total_cost += parent_total

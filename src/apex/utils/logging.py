@@ -3,6 +3,7 @@ Structured logging configuration with Application Insights integration.
 """
 import logging
 import sys
+
 from apex.config import config
 
 
@@ -27,9 +28,7 @@ def setup_logging():
 
             logger = logging.getLogger()
             logger.addHandler(
-                AzureLogHandler(
-                    connection_string=config.AZURE_APPINSIGHTS_CONNECTION_STRING
-                )
+                AzureLogHandler(connection_string=config.AZURE_APPINSIGHTS_CONNECTION_STRING)
             )
         except ImportError:
             logging.warning("opencensus-ext-azure not installed, skipping App Insights integration")

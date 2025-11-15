@@ -3,10 +3,11 @@ Document repository with project-specific queries.
 
 Handles document CRUD operations and validation status management.
 """
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from apex.database.repositories.base import BaseRepository
 from apex.models.database import Document

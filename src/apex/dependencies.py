@@ -4,18 +4,19 @@ FastAPI dependency injection configuration.
 CRITICAL: This module defines the session management pattern.
 All database operations MUST use the get_db() dependency.
 """
-from typing import Generator
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
-from sqlalchemy import select
 import logging
+from typing import Generator
+
 import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from apex.database.connection import SessionLocal
 from apex.config import config
+from apex.database.connection import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -151,12 +152,10 @@ def get_llm_orchestrator():
 
 def get_risk_analyzer():
     """Get MonteCarloRiskAnalyzer instance."""
-    from apex.services.risk_analysis import MonteCarloRiskAnalyzer
     from apex.config import config
+    from apex.services.risk_analysis import MonteCarloRiskAnalyzer
 
-    return MonteCarloRiskAnalyzer(
-        iterations=config.DEFAULT_MONTE_CARLO_ITERATIONS, random_seed=42
-    )
+    return MonteCarloRiskAnalyzer(iterations=config.DEFAULT_MONTE_CARLO_ITERATIONS, random_seed=42)
 
 
 def get_aace_classifier():

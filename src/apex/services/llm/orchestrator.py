@@ -6,8 +6,8 @@ and ensures audit trail compliance. NOT a flat client - intelligent routing.
 """
 import json
 import logging
-from typing import Dict, Any, List, Optional
 from decimal import Decimal
+from typing import Any, Dict, List, Optional
 
 try:
     import tiktoken
@@ -16,26 +16,25 @@ except ImportError:
     logging.warning("tiktoken not installed - token counting will be approximate")
 
 from openai import AsyncAzureOpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from apex.config import config
-from apex.models.enums import AACEClass
-from apex.models.database import Project, Document
 from apex.azure.auth import get_azure_credential
+from apex.config import config
+from apex.models.database import Document, Project
+from apex.models.enums import AACEClass
 from apex.services.llm.prompts import (
-    get_persona_config,
-    get_validation_prompt,
-    get_narrative_prompt,
     get_assumptions_prompt,
     get_exclusions_prompt,
+    get_narrative_prompt,
+    get_persona_config,
+    get_validation_prompt,
 )
 from apex.services.llm.validators import (
-    validate_narrative_response,
+    extract_json_from_response,
     validate_assumptions_list,
     validate_exclusions_list,
-    extract_json_from_response,
-    check_hallucination_markers,
     validate_json_structure,
+    validate_narrative_response,
 )
 from apex.utils.errors import BusinessRuleViolation
 
@@ -94,7 +93,9 @@ class LLMOrchestrator:
             # CRITICAL FIX: Must await the async credential token retrieval
             async def token_provider():
                 try:
-                    token = await credential.get_token("https://cognitiveservices.azure.com/.default")
+                    token = await credential.get_token(
+                        "https://cognitiveservices.azure.com/.default"
+                    )
                     return token.token
                 except Exception as exc:
                     logger.error(f"Failed to retrieve Azure AD token: {exc}")
@@ -168,9 +169,7 @@ class LLMOrchestrator:
 
         # Calculate base token usage
         base_tokens = self._estimate_tokens(system_prompt) + self._estimate_tokens(user_prompt)
-        available_tokens = (
-            self.max_context_tokens - base_tokens - self.response_buffer_tokens
-        )
+        available_tokens = self.max_context_tokens - base_tokens - self.response_buffer_tokens
 
         # If context_data provided, serialize and check token budget
         if context_data:
@@ -192,14 +191,14 @@ class LLMOrchestrator:
         messages.append({"role": "user", "content": user_prompt})
 
         total_tokens = self._estimate_tokens(system_prompt + user_prompt)
-        logger.info(f"Prepared messages: ~{total_tokens} tokens (budget: {self.max_context_tokens})")
+        logger.info(
+            f"Prepared messages: ~{total_tokens} tokens (budget: {self.max_context_tokens})"
+        )
 
         return messages
 
     def _truncate_context(
-        self,
-        context_data: Dict[str, Any],
-        available_tokens: int
+        self, context_data: Dict[str, Any], available_tokens: int
     ) -> Dict[str, Any]:
         """
         Smart truncation preserving priority data.
@@ -248,7 +247,9 @@ class LLMOrchestrator:
                 if current_tokens > available_tokens * 0.9:
                     # Remove last added key and stop
                     del truncated[key]
-                    logger.warning(f"Truncation complete. Final tokens: {current_tokens}/{available_tokens}")
+                    logger.warning(
+                        f"Truncation complete. Final tokens: {current_tokens}/{available_tokens}"
+                    )
                     return truncated
 
         return truncated
@@ -291,8 +292,7 @@ class LLMOrchestrator:
         # Extract response content
         if not response.choices or not response.choices[0].message:
             raise BusinessRuleViolation(
-                message="LLM returned empty response",
-                code="LLM_EMPTY_RESPONSE"
+                message="LLM returned empty response", code="LLM_EMPTY_RESPONSE"
             )
 
         content = response.choices[0].message.content
@@ -358,7 +358,7 @@ class LLMOrchestrator:
             raise BusinessRuleViolation(
                 message=f"LLM narrative failed validation for {aace_class.value}",
                 code="NARRATIVE_VALIDATION_FAILED",
-                details={"aace_class": aace_class.value, "response_length": len(response)}
+                details={"aace_class": aace_class.value, "response_length": len(response)},
             )
 
         logger.info(f"Narrative generated successfully: {len(response)} characters")
@@ -387,10 +387,12 @@ class LLMOrchestrator:
         persona = get_persona_config(aace_class)
 
         # Create document summary
-        document_summary = "\n".join([
-            f"- {doc.document_type}: {doc.blob_path} (status: {doc.validation_status.value})"
-            for doc in documents
-        ])
+        document_summary = "\n".join(
+            [
+                f"- {doc.document_type}: {doc.blob_path} (status: {doc.validation_status.value})"
+                for doc in documents
+            ]
+        )
 
         user_prompt = get_assumptions_prompt(
             aace_class=aace_class,
@@ -417,14 +419,14 @@ class LLMOrchestrator:
         except ValueError as exc:
             raise BusinessRuleViolation(
                 message=f"Failed to extract JSON from assumptions response: {exc}",
-                code="ASSUMPTIONS_JSON_EXTRACTION_FAILED"
+                code="ASSUMPTIONS_JSON_EXTRACTION_FAILED",
             )
 
         # Validate structure
         if not validate_json_structure(data, required_fields=["assumptions"]):
             raise BusinessRuleViolation(
                 message="Assumptions response missing required 'assumptions' field",
-                code="ASSUMPTIONS_INVALID_STRUCTURE"
+                code="ASSUMPTIONS_INVALID_STRUCTURE",
             )
 
         # Clean and validate assumption list
@@ -456,10 +458,12 @@ class LLMOrchestrator:
         persona = get_persona_config(aace_class)
 
         # Create document summary
-        document_summary = "\n".join([
-            f"- {doc.document_type}: {doc.blob_path} (status: {doc.validation_status.value})"
-            for doc in documents
-        ])
+        document_summary = "\n".join(
+            [
+                f"- {doc.document_type}: {doc.blob_path} (status: {doc.validation_status.value})"
+                for doc in documents
+            ]
+        )
 
         user_prompt = get_exclusions_prompt(
             aace_class=aace_class,
@@ -486,14 +490,14 @@ class LLMOrchestrator:
         except ValueError as exc:
             raise BusinessRuleViolation(
                 message=f"Failed to extract JSON from exclusions response: {exc}",
-                code="EXCLUSIONS_JSON_EXTRACTION_FAILED"
+                code="EXCLUSIONS_JSON_EXTRACTION_FAILED",
             )
 
         # Validate structure
         if not validate_json_structure(data, required_fields=["exclusions"]):
             raise BusinessRuleViolation(
                 message="Exclusions response missing required 'exclusions' field",
-                code="EXCLUSIONS_INVALID_STRUCTURE"
+                code="EXCLUSIONS_INVALID_STRUCTURE",
             )
 
         # Clean and validate exclusion list
@@ -552,23 +556,28 @@ class LLMOrchestrator:
         except ValueError as exc:
             raise BusinessRuleViolation(
                 message=f"Failed to extract JSON from validation response: {exc}",
-                code="VALIDATION_JSON_EXTRACTION_FAILED"
+                code="VALIDATION_JSON_EXTRACTION_FAILED",
             )
 
         # Validate structure
-        required_fields = ["completeness_score", "issues", "recommendations", "suitable_for_estimation"]
+        required_fields = [
+            "completeness_score",
+            "issues",
+            "recommendations",
+            "suitable_for_estimation",
+        ]
         if not validate_json_structure(data, required_fields=required_fields):
             raise BusinessRuleViolation(
                 message="Validation response missing required fields",
                 code="VALIDATION_INVALID_STRUCTURE",
-                details={"required": required_fields, "received": list(data.keys())}
+                details={"required": required_fields, "received": list(data.keys())},
             )
 
         # Validate completeness score range
         if not (0 <= data["completeness_score"] <= 100):
             raise BusinessRuleViolation(
                 message=f"Invalid completeness score: {data['completeness_score']} (must be 0-100)",
-                code="VALIDATION_INVALID_SCORE"
+                code="VALIDATION_INVALID_SCORE",
             )
 
         logger.info(

@@ -5,9 +5,9 @@ CRITICAL: Validates LLM outputs for structure, content quality, and hallucinatio
 All validation functions are defensive and handle malformed/unexpected responses gracefully.
 """
 import json
-import re
 import logging
-from typing import Dict, Any, List, Optional
+import re
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +53,7 @@ def validate_narrative_response(response: str, min_length: int = 100) -> bool:
 
     # Check minimum length
     if len(content) < min_length:
-        logger.warning(
-            f"Narrative validation failed: length {len(content)} < minimum {min_length}"
-        )
+        logger.warning(f"Narrative validation failed: length {len(content)} < minimum {min_length}")
         return False
 
     # Check for hallucination markers
@@ -67,10 +65,10 @@ def validate_narrative_response(response: str, min_length: int = 100) -> bool:
     placeholder_patterns = [
         r"\[.*?\]",  # [placeholder], [TODO], [insert text here]
         r"\{.*?\}",  # {placeholder}
-        r"xxx+",     # xxx, xxxx
-        r"TODO",     # TODO
-        r"FIXME",    # FIXME
-        r"TBD",      # TBD
+        r"xxx+",  # xxx, xxxx
+        r"TODO",  # TODO
+        r"FIXME",  # FIXME
+        r"TBD",  # TBD
     ]
 
     for pattern in placeholder_patterns:
@@ -138,7 +136,9 @@ def validate_assumptions_list(assumptions: List[str]) -> List[str]:
         seen_lowercase.add(lowercase)
         cleaned.append(cleaned_text)
 
-    logger.info(f"Assumptions validated: {len(assumptions)} → {len(cleaned)} (removed {len(assumptions) - len(cleaned)})")
+    logger.info(
+        f"Assumptions validated: {len(assumptions)} → {len(cleaned)} (removed {len(assumptions) - len(cleaned)})"
+    )
     return cleaned
 
 
@@ -195,7 +195,9 @@ def validate_exclusions_list(exclusions: List[str]) -> List[str]:
         seen_lowercase.add(lowercase)
         cleaned.append(cleaned_text)
 
-    logger.info(f"Exclusions validated: {len(exclusions)} → {len(cleaned)} (removed {len(exclusions) - len(cleaned)})")
+    logger.info(
+        f"Exclusions validated: {len(exclusions)} → {len(cleaned)} (removed {len(exclusions) - len(cleaned)})"
+    )
     return cleaned
 
 
@@ -242,8 +244,8 @@ def extract_json_from_response(response: str) -> Dict[str, Any]:
     # Strategy 3: Find JSON object/array patterns in text
     # Look for { ... } or [ ... ]
     json_patterns = [
-        r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # Nested objects (simple)
-        r'\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]',  # Nested arrays (simple)
+        r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}",  # Nested objects (simple)
+        r"\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]",  # Nested arrays (simple)
     ]
 
     for pattern in json_patterns:
@@ -270,7 +272,7 @@ def extract_json_from_response(response: str) -> Dict[str, Any]:
 
     for prefix in prefixes_to_remove:
         if cleaned.lower().startswith(prefix.lower()):
-            cleaned = cleaned[len(prefix):].strip()
+            cleaned = cleaned[len(prefix) :].strip()
 
     try:
         return json.loads(cleaned)
@@ -324,9 +326,7 @@ def check_hallucination_markers(response: str) -> bool:
 
 
 def validate_json_structure(
-    data: Dict[str, Any],
-    required_fields: List[str],
-    optional_fields: Optional[List[str]] = None
+    data: Dict[str, Any], required_fields: List[str], optional_fields: Optional[List[str]] = None
 ) -> bool:
     """
     Validate JSON structure against expected schema.
@@ -361,12 +361,16 @@ def validate_json_structure(
 
         # For string fields, check not empty
         if isinstance(data[field], str) and not data[field].strip():
-            logger.warning(f"JSON structure validation failed: required field '{field}' is empty string")
+            logger.warning(
+                f"JSON structure validation failed: required field '{field}' is empty string"
+            )
             return False
 
         # For list fields, check not empty
         if isinstance(data[field], list) and len(data[field]) == 0:
-            logger.warning(f"JSON structure validation failed: required field '{field}' is empty list")
+            logger.warning(
+                f"JSON structure validation failed: required field '{field}' is empty list"
+            )
             return False
 
     # If optional fields specified, check for unexpected fields

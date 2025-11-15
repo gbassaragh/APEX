@@ -4,11 +4,12 @@ Audit log repository with append-only operations.
 CRITICAL: Audit logs are immutable for ISO-NE compliance.
 No update() or delete() methods are exposed.
 """
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from apex.database.repositories.base import BaseRepository
 from apex.models.database import AuditLog

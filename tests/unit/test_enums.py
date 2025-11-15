@@ -5,7 +5,7 @@ Validates all enums match specification requirements exactly.
 """
 import pytest
 
-from apex.models.enums import ProjectStatus, ValidationStatus, AACEClass, TerrainType
+from apex.models.enums import AACEClass, ProjectStatus, TerrainType, ValidationStatus
 
 
 class TestProjectStatus:

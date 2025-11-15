@@ -1,18 +1,18 @@
 """
 Estimate repository with special handling for hierarchical line items.
 """
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
-from decimal import Decimal
+from sqlalchemy.orm import Session
 
 from apex.database.repositories.base import BaseRepository
 from apex.models.database import (
     Estimate,
-    EstimateLineItem,
     EstimateAssumption,
     EstimateExclusion,
+    EstimateLineItem,
     EstimateRiskFactor,
 )
 

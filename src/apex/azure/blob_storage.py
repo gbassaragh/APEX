@@ -7,12 +7,13 @@ Dead letter queue support for failed document processing.
 import logging
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
-from azure.storage.blob.aio import BlobServiceClient, ContainerClient
-from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
+from typing import Any, Dict, Optional
 
-from apex.config import config
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from azure.storage.blob.aio import BlobServiceClient, ContainerClient
+
 from apex.azure.auth import get_azure_credential
+from apex.config import config
 from apex.utils.retry import azure_retry
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,7 @@ class BlobStorageClient:
         if self._service_client is None:
             credential = await get_azure_credential()
             self._service_client = BlobServiceClient(
-                account_url=self.account_url,
-                credential=credential
+                account_url=self.account_url, credential=credential
             )
             logger.info(f"Initialized BlobServiceClient for {self.account_url}")
 
@@ -79,7 +79,7 @@ class BlobStorageClient:
         data: bytes,
         metadata: Optional[Dict[str, str]] = None,
         content_type: Optional[str] = None,
-        overwrite: bool = False
+        overwrite: bool = False,
     ) -> str:
         """
         Upload document to blob storage with metadata.
@@ -125,10 +125,8 @@ class BlobStorageClient:
         await blob_client.upload_blob(
             data=data,
             metadata=metadata,
-            content_settings={
-                "content_type": content_type
-            } if content_type else None,
-            overwrite=overwrite
+            content_settings={"content_type": content_type} if content_type else None,
+            overwrite=overwrite,
         )
 
         blob_path = f"{container}/{blob_name}"
@@ -137,11 +135,7 @@ class BlobStorageClient:
         return blob_path
 
     @azure_retry
-    async def download_document(
-        self,
-        container: str,
-        blob_name: str
-    ) -> bytes:
+    async def download_document(self, container: str, blob_name: str) -> bytes:
         """
         Download document from blob storage.
 
@@ -179,10 +173,7 @@ class BlobStorageClient:
 
     @azure_retry
     async def delete_document(
-        self,
-        container: str,
-        blob_name: str,
-        missing_ok: bool = True
+        self, container: str, blob_name: str, missing_ok: bool = True
     ) -> bool:
         """
         Delete document from blob storage.
@@ -223,11 +214,7 @@ class BlobStorageClient:
             raise
 
     @azure_retry
-    async def get_blob_metadata(
-        self,
-        container: str,
-        blob_name: str
-    ) -> Dict[str, str]:
+    async def get_blob_metadata(self, container: str, blob_name: str) -> Dict[str, str]:
         """
         Get blob metadata.
 
@@ -259,10 +246,7 @@ class BlobStorageClient:
 
     @azure_retry
     async def move_to_dead_letter_queue(
-        self,
-        source_container: str,
-        source_blob: str,
-        error_details: Dict[str, Any]
+        self, source_container: str, source_blob: str, error_details: Dict[str, Any]
     ) -> str:
         """
         Move failed document to dead letter queue with error metadata.
@@ -321,7 +305,7 @@ class BlobStorageClient:
         # Format: {container}/{original_path}_{timestamp}_{uuid}
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
-        blob_name_base = source_blob.replace('/', '-')  # Flatten nested paths
+        blob_name_base = source_blob.replace("/", "-")  # Flatten nested paths
         dlq_blob_name = f"{source_container}/{blob_name_base}_{timestamp}_{unique_id}"
 
         # Upload to DLQ with combined metadata
@@ -330,7 +314,7 @@ class BlobStorageClient:
             blob_name=dlq_blob_name,
             data=data,
             metadata=dlq_metadata,
-            overwrite=False  # Never overwrite - preserve all failure attempts
+            overwrite=False,  # Never overwrite - preserve all failure attempts
         )
 
         logger.warning(

@@ -8,27 +8,24 @@ Tests the complete workflow:
 4. Database persistence
 5. Audit logging
 """
-import pytest
-from uuid import uuid4
 from io import BytesIO
-from pathlib import Path
+from uuid import uuid4
+
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from apex.models.database import Document, User, Project, AuditLog
-from apex.models.enums import ValidationStatus, AACEClass, ProjectStatus
-from tests.fixtures.azure_mocks import (
-    MockBlobStorageClient,
-    MockDocumentParser,
-    MockLLMOrchestrator,
-)
+from apex.models.database import AuditLog, Document, Project
+from apex.models.enums import AACEClass, ProjectStatus, ValidationStatus
 
 
 @pytest.mark.asyncio
 class TestDocumentUpload:
     """Test document upload endpoint."""
 
-    async def test_upload_pdf_document_success(self, client: AsyncClient, test_project, test_user, db_session):
+    async def test_upload_pdf_document_success(
+        self, client: AsyncClient, test_project, test_user, db_session
+    ):
         """Test successful PDF document upload."""
         # Create test PDF content
         pdf_content = b"%PDF-1.4\n%Test PDF content\n%%EOF"
@@ -68,15 +65,16 @@ class TestDocumentUpload:
         # Verify audit log created
         audit_log = db_session.execute(
             select(AuditLog).where(
-                AuditLog.project_id == test_project.id,
-                AuditLog.action == "document_uploaded"
+                AuditLog.project_id == test_project.id, AuditLog.action == "document_uploaded"
             )
         ).scalar_one()
 
         assert audit_log.user_id == test_user.id
         assert audit_log.details["document_id"] == str(document.id)
 
-    async def test_upload_document_sanitizes_filename(self, client: AsyncClient, test_project, db_session):
+    async def test_upload_document_sanitizes_filename(
+        self, client: AsyncClient, test_project, db_session
+    ):
         """Test filename sanitization (path traversal prevention)."""
         pdf_content = b"%PDF-1.4\n%Test\n%%EOF"
 
@@ -163,20 +161,24 @@ class TestDocumentValidation:
     ):
         """Test successful document validation workflow."""
         # Configure mocks
-        mock_document_parser.set_parse_result({
-            "filename": "test.pdf",
-            "pages": [{"page_number": 1, "lines": [{"content": "Test scope document"}]}],
-            "tables": [],
-            "paragraphs": [{"content": "Complete project scope"}],
-            "metadata": {"page_count": 1}
-        })
+        mock_document_parser.set_parse_result(
+            {
+                "filename": "test.pdf",
+                "pages": [{"page_number": 1, "lines": [{"content": "Test scope document"}]}],
+                "tables": [],
+                "paragraphs": [{"content": "Complete project scope"}],
+                "metadata": {"page_count": 1},
+            }
+        )
 
-        mock_llm_orchestrator.set_validation_result({
-            "completeness_score": 85,
-            "issues": [],
-            "recommendations": ["Document is complete"],
-            "suitable_for_estimation": True,
-        })
+        mock_llm_orchestrator.set_validation_result(
+            {
+                "completeness_score": 85,
+                "issues": [],
+                "recommendations": ["Document is complete"],
+                "suitable_for_estimation": True,
+            }
+        )
 
         response = await client.post(f"/api/v1/documents/{test_document.id}/validate")
 
@@ -217,17 +219,24 @@ class TestDocumentValidation:
         assert test_document.validation_status == ValidationStatus.FAILED
 
     async def test_validate_document_llm_error_manual_review(
-        self, client: AsyncClient, test_document, mock_document_parser, mock_llm_orchestrator, db_session
+        self,
+        client: AsyncClient,
+        test_document,
+        mock_document_parser,
+        mock_llm_orchestrator,
+        db_session,
     ):
         """Test LLM validation error triggers MANUAL_REVIEW status."""
         # Document parsing succeeds
-        mock_document_parser.set_parse_result({
-            "filename": "test.pdf",
-            "pages": [{"page_number": 1}],
-            "tables": [],
-            "paragraphs": [],
-            "metadata": {"page_count": 1}
-        })
+        mock_document_parser.set_parse_result(
+            {
+                "filename": "test.pdf",
+                "pages": [{"page_number": 1}],
+                "tables": [],
+                "paragraphs": [],
+                "metadata": {"page_count": 1},
+            }
+        )
 
         # LLM validation fails
         mock_llm_orchestrator.set_error("Hallucination detected")
@@ -260,7 +269,7 @@ class TestDocumentValidation:
         db_session.add(bid_document)
         db_session.commit()
 
-        response = await client.post(f"/api/v1/documents/{bid_document.id}/validate")
+        await client.post(f"/api/v1/documents/{bid_document.id}/validate")
 
         # Verify LLM was called with CLASS_2
         assert mock_llm_orchestrator.last_aace_class == AACEClass.CLASS_2
@@ -296,7 +305,9 @@ class TestDocumentRetrieval:
 
         assert response.status_code == 404
 
-    async def test_list_project_documents(self, client: AsyncClient, test_project, test_user, db_session):
+    async def test_list_project_documents(
+        self, client: AsyncClient, test_project, test_user, db_session
+    ):
         """Test listing documents for a project with pagination."""
         # Create multiple documents
         for i in range(5):
@@ -312,7 +323,7 @@ class TestDocumentRetrieval:
 
         response = await client.get(
             f"/api/v1/documents/projects/{test_project.id}/documents",
-            params={"page": 1, "page_size": 3}
+            params={"page": 1, "page_size": 3},
         )
 
         assert response.status_code == 200
@@ -343,7 +354,7 @@ class TestDocumentRetrieval:
 
         response = await client.get(
             f"/api/v1/documents/projects/{test_project.id}/documents",
-            params={"document_type": "scope"}
+            params={"document_type": "scope"},
         )
 
         assert response.status_code == 200
@@ -381,8 +392,7 @@ class TestDocumentDeletion:
         # Verify audit log
         audit = db_session.execute(
             select(AuditLog).where(
-                AuditLog.project_id == test_project.id,
-                AuditLog.action == "document_deleted"
+                AuditLog.project_id == test_project.id, AuditLog.action == "document_deleted"
             )
         ).scalar_one()
 

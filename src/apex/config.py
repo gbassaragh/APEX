@@ -1,8 +1,9 @@
 """
 Configuration module using pydantic-settings for environment-based configuration.
 """
+from typing import List, Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional, List
 
 
 class Config(BaseSettings):
@@ -67,7 +68,9 @@ class Config(BaseSettings):
     # Azure AD Authentication (OAuth 2.0)
     AZURE_AD_TENANT_ID: str  # Azure AD tenant ID
     AZURE_AD_CLIENT_ID: str  # Application (client) ID for APEX backend
-    AZURE_AD_ISSUER: Optional[str] = None  # Token issuer (defaults to https://sts.windows.net/{tenant_id}/)
+    AZURE_AD_ISSUER: Optional[
+        str
+    ] = None  # Token issuer (defaults to https://sts.windows.net/{tenant_id}/)
     AZURE_AD_AUDIENCE: Optional[str] = None  # Expected audience claim (defaults to client_id)
     AZURE_AD_JWKS_CACHE_TTL: int = 600  # JWKS key cache TTL in seconds (10 minutes)
 

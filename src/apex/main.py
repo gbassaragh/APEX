@@ -3,19 +3,20 @@ FastAPI application entry point for APEX.
 
 Enterprise estimation platform for utility T&D projects.
 """
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
 import logging
 import traceback
+from datetime import datetime
 
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from apex.api.v1.router import api_router
 from apex.config import config
 from apex.models.schemas import ErrorResponse
 from apex.utils.errors import BusinessRuleViolation
-from apex.utils.middleware import RequestIDMiddleware
 from apex.utils.logging import setup_logging
-from apex.api.v1.router import api_router
+from apex.utils.middleware import RequestIDMiddleware
 
 # Setup logging
 setup_logging()

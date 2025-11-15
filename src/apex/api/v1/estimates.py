@@ -12,36 +12,39 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from apex.dependencies import (
-    get_db,
-    get_current_user,
-    get_project_repo,
-    get_estimate_repo,
-    get_estimate_generator,
-    get_audit_repo,
-)
-from apex.database.repositories.project_repository import ProjectRepository
-from apex.database.repositories.estimate_repository import EstimateRepository
 from apex.database.repositories.audit_repository import AuditRepository
-from apex.services.estimate_generator import EstimateGenerator
+from apex.database.repositories.estimate_repository import EstimateRepository
+from apex.database.repositories.project_repository import ProjectRepository
+from apex.dependencies import (
+    get_audit_repo,
+    get_current_user,
+    get_db,
+    get_estimate_generator,
+    get_estimate_repo,
+    get_project_repo,
+)
 from apex.models.database import User
 from apex.models.schemas import (
-    EstimateGenerateRequest,
-    EstimateResponse,
     EstimateDetailResponse,
+    EstimateGenerateRequest,
     EstimateLineItemResponse,
+    EstimateResponse,
     PaginatedResponse,
 )
+from apex.services.estimate_generator import EstimateGenerator
 
 router = APIRouter()
 
 
-@router.post("/generate", response_model=EstimateDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/generate", response_model=EstimateDetailResponse, status_code=status.HTTP_201_CREATED
+)
 def generate_estimate(
     request: EstimateGenerateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     project_repo: ProjectRepository = Depends(get_project_repo),
+    estimate_repo: EstimateRepository = Depends(get_estimate_repo),
     estimate_generator: EstimateGenerator = Depends(get_estimate_generator),
     audit_repo: AuditRepository = Depends(get_audit_repo),
 ):
@@ -344,7 +347,9 @@ def export_estimate(
             "line_items": [
                 {
                     "id": str(item.id),
-                    "parent_line_item_id": str(item.parent_line_item_id) if item.parent_line_item_id else None,
+                    "parent_line_item_id": str(item.parent_line_item_id)
+                    if item.parent_line_item_id
+                    else None,
                     "wbs_code": item.wbs_code,
                     "description": item.description,
                     "quantity": item.quantity,

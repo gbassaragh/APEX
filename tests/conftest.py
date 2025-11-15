@@ -7,37 +7,36 @@ Provides:
 - Mock Azure services
 - Test user/project/document fixtures
 """
-import pytest
 import asyncio
-from typing import Generator, AsyncGenerator
+from typing import AsyncGenerator, Generator
 from uuid import uuid4
 
-from fastapi.testclient import TestClient
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from apex.main import app
-from apex.models.database import Base, User, Project, Document, ProjectAccess, AppRole
-from apex.models.enums import ProjectStatus, ValidationStatus
 from apex.dependencies import (
-    get_db,
-    get_current_user,
     get_blob_storage,
+    get_current_user,
+    get_db,
     get_document_parser,
     get_llm_orchestrator,
 )
+from apex.main import app
+from apex.models.database import AppRole, Base, Document, Project, ProjectAccess, User
+from apex.models.enums import ProjectStatus, ValidationStatus
 from tests.fixtures.azure_mocks import (
     MockBlobStorageClient,
     MockDocumentParser,
     MockLLMOrchestrator,
 )
 
-
 # ============================================================================
 # Database Fixtures
 # ============================================================================
+
 
 @pytest.fixture(scope="function")
 def db_engine():
@@ -79,6 +78,7 @@ def db_session(db_engine) -> Generator[Session, None, None]:
 # Mock Azure Services
 # ============================================================================
 
+
 @pytest.fixture(scope="function")
 def mock_blob_storage():
     """Mock Azure Blob Storage client."""
@@ -100,6 +100,7 @@ def mock_llm_orchestrator():
 # ============================================================================
 # FastAPI Test Client
 # ============================================================================
+
 
 @pytest.fixture(scope="function")
 async def client(
@@ -152,6 +153,7 @@ async def client(
 # ============================================================================
 # Test Data Fixtures
 # ============================================================================
+
 
 @pytest.fixture(scope="function")
 def test_user(db_session: Session) -> User:
@@ -222,6 +224,7 @@ def test_document(db_session: Session, test_project: Project, test_user: User) -
 # ============================================================================
 # Event Loop Configuration (for async tests)
 # ============================================================================
+
 
 @pytest.fixture(scope="session")
 def event_loop():

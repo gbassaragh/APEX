@@ -16,12 +16,12 @@ HIGH-RISK AREAS flagged for human review:
 PROHIBITED PACKAGES:
 - mcerp (outdated, NumPy incompatible) - use scipy.stats instead
 """
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
-import numpy as np
-from scipy.stats import qmc, norm, triang, uniform, lognorm, beta
-from scipy.stats import rankdata
 import logging
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+from scipy.stats import beta, lognorm, norm, qmc, rankdata, triang, uniform
 
 from apex.utils.errors import BusinessRuleViolation
 
@@ -127,7 +127,9 @@ class MonteCarloRiskAnalyzer:
         for j, name in enumerate(factor_names):
             factor = risk_factors[name]
             transformed[:, j] = self._transform_samples(lhs_samples[:, j], factor)
-            logger.debug(f"Transformed risk factor '{name}' using {factor.distribution} distribution")
+            logger.debug(
+                f"Transformed risk factor '{name}' using {factor.distribution} distribution"
+            )
 
         # Apply correlation if matrix provided
         if correlation_matrix is not None:
@@ -185,15 +187,15 @@ class MonteCarloRiskAnalyzer:
         if correlation_matrix.shape != (n_vars, n_vars):
             raise BusinessRuleViolation(
                 message=f"Correlation matrix shape {correlation_matrix.shape} doesn't match "
-                        f"{n_vars} risk factors (expected {n_vars}x{n_vars})",
-                code="INVALID_CORRELATION_MATRIX_SHAPE"
+                f"{n_vars} risk factors (expected {n_vars}x{n_vars})",
+                code="INVALID_CORRELATION_MATRIX_SHAPE",
             )
 
         # Check symmetry
         if not np.allclose(correlation_matrix, correlation_matrix.T):
             raise BusinessRuleViolation(
                 message="Correlation matrix must be symmetric",
-                code="CORRELATION_MATRIX_NOT_SYMMETRIC"
+                code="CORRELATION_MATRIX_NOT_SYMMETRIC",
             )
 
         # Check diagonal is all 1s
@@ -201,14 +203,14 @@ class MonteCarloRiskAnalyzer:
         if not np.allclose(diagonal, 1.0):
             raise BusinessRuleViolation(
                 message=f"Correlation matrix diagonal must be all 1.0, got {diagonal}",
-                code="CORRELATION_MATRIX_INVALID_DIAGONAL"
+                code="CORRELATION_MATRIX_INVALID_DIAGONAL",
             )
 
         # Check values in valid range [-1, 1]
         if not np.all((correlation_matrix >= -1.0) & (correlation_matrix <= 1.0)):
             raise BusinessRuleViolation(
                 message="Correlation matrix values must be in range [-1, 1]",
-                code="CORRELATION_MATRIX_OUT_OF_RANGE"
+                code="CORRELATION_MATRIX_OUT_OF_RANGE",
             )
 
         # Check positive semi-definite (will be checked again in Cholesky, but good to fail early)
@@ -239,7 +241,9 @@ class MonteCarloRiskAnalyzer:
 
         if dist == "triangular":
             if factor.min_value is None or factor.most_likely is None or factor.max_value is None:
-                raise ValueError(f"Triangular distribution requires min, likely, max: {factor.name}")
+                raise ValueError(
+                    f"Triangular distribution requires min, likely, max: {factor.name}"
+                )
 
             # Scipy triangular uses mode=(c-loc)/(scale) where loc=min, scale=max-min
             loc = factor.min_value
@@ -311,7 +315,9 @@ class MonteCarloRiskAnalyzer:
         else:
             raise ValueError(f"Unsupported distribution type: {dist}")
 
-    def _apply_iman_conover(self, samples: np.ndarray, correlation_matrix: np.ndarray) -> np.ndarray:
+    def _apply_iman_conover(
+        self, samples: np.ndarray, correlation_matrix: np.ndarray
+    ) -> np.ndarray:
         """
         Apply Iman-Conover method to induce correlation while preserving marginal distributions.
 

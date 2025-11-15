@@ -3,14 +3,14 @@ Pydantic schemas for API request/response DTOs.
 
 Includes pagination, error responses, and domain models.
 """
-from typing import Generic, TypeVar, List, Optional, Dict, Any
-from uuid import UUID
-from pydantic import BaseModel, Field, EmailStr
 from datetime import datetime
 from decimal import Decimal
+from typing import Any, Dict, Generic, List, Optional, TypeVar
+from uuid import UUID
 
-from apex.models.enums import ProjectStatus, ValidationStatus, AACEClass, TerrainType
+from pydantic import BaseModel, EmailStr, Field
 
+from apex.models.enums import AACEClass, ProjectStatus, TerrainType, ValidationStatus
 
 # Generic type for pagination
 T = TypeVar("T")
@@ -141,7 +141,9 @@ class ProjectAccessRevoke(BaseModel):
     """Schema for revoking project access."""
 
     user_id: UUID
-    role_id: Optional[int] = Field(None, ge=1, le=3, description="Specific role to revoke, or None for all roles")
+    role_id: Optional[int] = Field(
+        None, ge=1, le=3, description="Specific role to revoke, or None for all roles"
+    )
 
 
 class ProjectAccessResponse(BaseModel):

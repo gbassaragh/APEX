@@ -7,12 +7,13 @@ Tests:
 - Project retrieval
 - Access control enforcement
 """
-import pytest
 from uuid import uuid4
+
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from apex.models.database import Project, ProjectAccess, AppRole, AuditLog
+from apex.models.database import AppRole, AuditLog, Project, ProjectAccess
 from apex.models.enums import ProjectStatus
 
 
@@ -41,9 +42,7 @@ class TestProjectCreation:
         assert result["status"] == "draft"
 
         # Verify project in database
-        project = db_session.execute(
-            select(Project).where(Project.id == result["id"])
-        ).scalar_one()
+        project = db_session.execute(select(Project).where(Project.id == result["id"])).scalar_one()
 
         assert project.created_by_id == test_user.id
 
@@ -54,7 +53,7 @@ class TestProjectCreation:
             .where(
                 ProjectAccess.project_id == project.id,
                 ProjectAccess.user_id == test_user.id,
-                AppRole.role_name == "Manager"
+                AppRole.role_name == "Manager",
             )
         ).scalar_one_or_none()
 
@@ -63,8 +62,7 @@ class TestProjectCreation:
         # Verify audit log
         audit = db_session.execute(
             select(AuditLog).where(
-                AuditLog.project_id == project.id,
-                AuditLog.action == "project_created"
+                AuditLog.project_id == project.id, AuditLog.action == "project_created"
             )
         ).scalar_one()
 
@@ -117,7 +115,9 @@ class TestProjectRetrieval:
 
         assert response.status_code == 404
 
-    async def test_get_project_unauthorized_access(self, client: AsyncClient, test_user, db_session):
+    async def test_get_project_unauthorized_access(
+        self, client: AsyncClient, test_user, db_session
+    ):
         """Test access control prevents unauthorized access."""
         # Create project without granting access to test_user
         unauthorized_project = Project(
@@ -197,8 +197,7 @@ class TestProjectUpdate:
         estimator_role = db_session.query(AppRole).filter_by(role_name="Estimator").first()
         access = db_session.execute(
             select(ProjectAccess).where(
-                ProjectAccess.project_id == test_project.id,
-                ProjectAccess.user_id == test_user.id
+                ProjectAccess.project_id == test_project.id, ProjectAccess.user_id == test_user.id
             )
         ).scalar_one()
         access.app_role_id = estimator_role.id

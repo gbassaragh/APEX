@@ -3,55 +3,45 @@ Document upload, validation, and retrieval endpoints.
 
 Handles document upload to Azure Blob Storage and AI-powered validation.
 """
-from typing import Optional
-from uuid import UUID
+import logging
+import re
 from datetime import datetime
 from pathlib import Path
-import re
-import logging
+from typing import Optional
+from uuid import UUID
 
-logger = logging.getLogger(__name__)
-
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    UploadFile,
-    File,
-    Form,
-    Query,
-    status,
-)
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
+from apex.azure.blob_storage import BlobStorageClient
+from apex.config import config
+from apex.database.repositories.audit_repository import AuditRepository
+from apex.database.repositories.document_repository import DocumentRepository
+from apex.database.repositories.project_repository import ProjectRepository
 from apex.dependencies import (
-    get_db,
-    get_current_user,
-    get_project_repo,
-    get_document_repo,
     get_audit_repo,
     get_blob_storage,
-    get_llm_orchestrator,
+    get_current_user,
+    get_db,
     get_document_parser,
+    get_document_repo,
+    get_llm_orchestrator,
+    get_project_repo,
 )
-from apex.database.repositories.project_repository import ProjectRepository
-from apex.database.repositories.document_repository import DocumentRepository
-from apex.database.repositories.audit_repository import AuditRepository
-from apex.azure.blob_storage import BlobStorageClient
-from apex.services.llm.orchestrator import LLMOrchestrator
-from apex.services.document_parser import DocumentParser
 from apex.models.database import User
+from apex.models.enums import AACEClass, ValidationStatus
 from apex.models.schemas import (
-    DocumentUploadResponse,
     DocumentResponse,
+    DocumentUploadResponse,
     DocumentValidationResult,
     PaginatedResponse,
 )
-from apex.models.enums import ValidationStatus, AACEClass
-from apex.config import config
+from apex.services.document_parser import DocumentParser
+from apex.services.llm.orchestrator import LLMOrchestrator
 from apex.utils.errors import BusinessRuleViolation
 from apex.utils.retry import azure_retry
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -77,26 +67,47 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     safe_name = Path(filename).name
 
     # Remove control characters (0x00-0x1F) and Unicode RTL markers (0x200E, 0x200F, 0x202A-0x202E)
-    safe_name = re.sub(r'[\x00-\x1F\u200E\u200F\u202A-\u202E]', '', safe_name)
+    safe_name = re.sub(r"[\x00-\x1F\u200E\u200F\u202A-\u202E]", "", safe_name)
 
     # Replace unsafe characters with underscore
     # Azure blob names cannot contain: \ / : * ? " < > |
-    safe_name = re.sub(r'[\\/:*?"<>|]', '_', safe_name)
+    safe_name = re.sub(r'[\\/:*?"<>|]', "_", safe_name)
 
     # Remove leading/trailing whitespace and dots (Azure constraint)
-    safe_name = safe_name.strip('. \t\n\r')
+    safe_name = safe_name.strip(". \t\n\r")
 
     # Prevent Windows device names
-    device_names = {'CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5',
-                    'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4',
-                    'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'}
-    name_without_ext = safe_name.rsplit('.', 1)[0].upper()
+    device_names = {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
+    }
+    name_without_ext = safe_name.rsplit(".", 1)[0].upper()
     if name_without_ext in device_names:
         safe_name = f"file_{safe_name}"
 
     # Enforce max length (preserve extension if possible)
     if len(safe_name) > max_length:
-        parts = safe_name.rsplit('.', 1)
+        parts = safe_name.rsplit(".", 1)
         if len(parts) == 2:
             # Has extension - preserve it
             name, ext = parts
@@ -107,7 +118,7 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
             safe_name = safe_name[:max_length]
 
     # Final safety check - if empty after sanitization, use default
-    if not safe_name or safe_name == '.':
+    if not safe_name or safe_name == ".":
         safe_name = "uploaded_file"
 
     return safe_name
@@ -178,7 +189,6 @@ async def upload_document(
     blob_name = f"uploads/{project_id}/{timestamp}_{safe_filename}"
 
     try:
-
         # Upload to blob storage
         await blob_storage.upload_document(
             container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
@@ -356,8 +366,6 @@ async def validate_document(
 
             # Extract validation results
             completeness_score = llm_validation.get("completeness_score", 0)
-            issues = llm_validation.get("issues", [])
-            recommendations = llm_validation.get("recommendations", [])
             suitable_for_estimation = llm_validation.get("suitable_for_estimation", False)
 
             # Determine validation status
@@ -383,10 +391,10 @@ async def validate_document(
                 "parsed_content": structured_content,
                 "llm_error": llm_error.message,
                 "aace_class_used": aace_class.value,
+                "issues": [f"LLM validation failed: {llm_error.message}"],
+                "recommendations": ["Manual review required due to LLM validation failure"],
             }
             completeness_score = None
-            issues = [f"LLM validation failed: {llm_error.message}"]
-            recommendations = ["Manual review required due to LLM validation failure"]
             suitable_for_estimation = False
 
         except Exception as llm_error:
@@ -397,10 +405,10 @@ async def validate_document(
                 "parsed_content": structured_content,
                 "llm_error": str(llm_error),
                 "aace_class_used": aace_class.value,
+                "issues": [f"LLM validation error: {str(llm_error)}"],
+                "recommendations": ["Manual review required due to LLM error"],
             }
             completeness_score = None
-            issues = [f"LLM validation error: {str(llm_error)}"]
-            recommendations = ["Manual review required due to LLM error"]
             suitable_for_estimation = False
 
         # Update document with validation results

@@ -21,37 +21,37 @@ MUST check ProjectAccess before allowing estimate generation.
 13. Persist via repository (single transaction)
 14. Create AuditLog entry
 """
-from uuid import UUID
-from typing import List, Dict, Any
-from decimal import Decimal
-from datetime import datetime
 import logging
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Dict, List
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from apex.models.enums import AACEClass, ProjectStatus
-from apex.models.database import (
-    User,
-    Project,
-    Document,
-    Estimate,
-    EstimateLineItem,
-    EstimateAssumption,
-    EstimateExclusion,
-    EstimateRiskFactor,
-    CostCode,
-    AuditLog,
-)
-from apex.database.repositories.project_repository import ProjectRepository
+from apex.config import config
+from apex.database.repositories.audit_repository import AuditRepository
 from apex.database.repositories.document_repository import DocumentRepository
 from apex.database.repositories.estimate_repository import EstimateRepository
-from apex.database.repositories.audit_repository import AuditRepository
-from apex.services.llm.orchestrator import LLMOrchestrator
-from apex.services.risk_analysis import MonteCarloRiskAnalyzer, RiskFactor
+from apex.database.repositories.project_repository import ProjectRepository
+from apex.models.database import (
+    AuditLog,
+    CostCode,
+    Document,
+    Estimate,
+    EstimateAssumption,
+    EstimateExclusion,
+    EstimateLineItem,
+    EstimateRiskFactor,
+    Project,
+    User,
+)
+from apex.models.enums import AACEClass
 from apex.services.aace_classifier import AACEClassifier
 from apex.services.cost_database import CostDatabaseService
+from apex.services.llm.orchestrator import LLMOrchestrator
+from apex.services.risk_analysis import MonteCarloRiskAnalyzer, RiskFactor
 from apex.utils.errors import BusinessRuleViolation
-from apex.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +166,7 @@ class EstimateGenerator:
         Raises:
             BusinessRuleViolation: Access denied, validation failures, etc.
         """
-        logger.info(
-            f"Starting estimate generation for project {project_id} by user {user.email}"
-        )
+        logger.info(f"Starting estimate generation for project {project_id} by user {user.email}")
 
         start_time = datetime.utcnow()
 
@@ -176,28 +174,23 @@ class EstimateGenerator:
         project = self.project_repo.get_by_id(db, project_id)
         if not project:
             raise BusinessRuleViolation(
-                message=f"Project not found: {project_id}",
-                code="PROJECT_NOT_FOUND"
+                message=f"Project not found: {project_id}", code="PROJECT_NOT_FOUND"
             )
 
         documents = self.document_repo.get_by_project_id(db, project_id)
 
-        logger.info(
-            f"Loaded project {project.project_number}: {len(documents)} documents"
-        )
+        logger.info(f"Loaded project {project.project_number}: {len(documents)} documents")
 
         # STEP 2: Check user access
         has_access = self.project_repo.check_user_access(db, user.id, project_id)
         if not has_access:
             raise BusinessRuleViolation(
                 message=f"User {user.email} does not have access to project {project_id}",
-                code="ACCESS_DENIED"
+                code="ACCESS_DENIED",
             )
 
         # STEP 3: Derive completeness + maturity metrics
-        completeness_score, engineering_maturity = self._derive_project_metrics(
-            project, documents
-        )
+        completeness_score, engineering_maturity = self._derive_project_metrics(project, documents)
 
         logger.info(
             f"Project metrics: completeness={completeness_score}%, "
@@ -230,9 +223,7 @@ class EstimateGenerator:
             cost_code_map=cost_code_map,
         )
 
-        logger.info(
-            f"Base cost computed: ${base_cost:,.2f} with {len(line_items)} line items"
-        )
+        logger.info(f"Base cost computed: ${base_cost:,.2f} with {len(line_items)} line items")
 
         # STEP 6: Build RiskFactor objects from DTO
         risk_factors = self._build_risk_factors(risk_factors_dto)
@@ -251,12 +242,14 @@ class EstimateGenerator:
         logger.info(
             f"Monte Carlo analysis complete: "
             f"P50=${risk_results['percentiles']['p50']:,.2f}, "
-            f"P{int(confidence_level*100)}=${risk_results['percentiles'][f'p{int(confidence_level*100)}']:,.2f}"
+            f"P{int(confidence_level * 100)}=${risk_results['percentiles'][f'p{int(confidence_level * 100)}']:,.2f}"
         )
 
         # STEP 8: Compute contingency percentage
-        target_cost = Decimal(str(risk_results["percentiles"][f"p{int(confidence_level*100)}"]))
-        contingency_pct = float((target_cost - base_cost) / base_cost * 100) if base_cost > 0 else 0.0
+        target_cost = Decimal(str(risk_results["percentiles"][f"p{int(confidence_level * 100)}"]))
+        contingency_pct = (
+            float((target_cost - base_cost) / base_cost * 100) if base_cost > 0 else 0.0
+        )
 
         logger.info(f"Contingency percentage: {contingency_pct:.2f}%")
 
@@ -344,7 +337,6 @@ class EstimateGenerator:
 
             risk_factor_entities.append(risk_factor_entity)
 
-
         logger.info(
             f"Built estimate entity with {len(line_items)} line items, "
             f"{len(assumption_entities)} assumptions, {len(exclusion_entities)} exclusions, "
@@ -417,7 +409,9 @@ class EstimateGenerator:
         if total_docs == 0:
             completeness_score = 0
         else:
-            validated_docs = sum(1 for doc in documents if doc.completeness_score and doc.completeness_score >= 70)
+            validated_docs = sum(
+                1 for doc in documents if doc.completeness_score and doc.completeness_score >= 70
+            )
             completeness_score = int((validated_docs / total_docs) * 100)
 
         # Engineering maturity: heuristic based on project status and document types
@@ -486,7 +480,7 @@ class EstimateGenerator:
                 raise BusinessRuleViolation(
                     message=f"Invalid risk factor DTO: {exc}",
                     code="INVALID_RISK_FACTOR_DTO",
-                    details={"dto": dto}
+                    details={"dto": dto},
                 )
 
         logger.info(f"Built {len(risk_factors)} RiskFactor objects from DTOs")
@@ -507,7 +501,11 @@ class EstimateGenerator:
             Formatted summary string
         """
         # Group by parent (items with no _temp_parent_ref are parents)
-        parents = [item for item in line_items if not hasattr(item, "_temp_parent_ref") or item._temp_parent_ref is None]
+        parents = [
+            item
+            for item in line_items
+            if not hasattr(item, "_temp_parent_ref") or item._temp_parent_ref is None
+        ]
 
         summary_lines = []
         for parent in parents:
@@ -546,14 +544,15 @@ class EstimateGenerator:
         """
         # Generate estimate number (MVP: simple incrementing)
         # Production: Get next number from sequence or database
-        estimate_number = f"{project.project_number}-EST-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        estimate_number = (
+            f"{project.project_number}-EST-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        )
 
         # HIGH FIX: Store actual confidence level percentile, not just P80
         # Map confidence_level to appropriate percentile
         target_percentile_key = f"p{int(confidence_level * 100)}"
         target_percentile_cost = risk_results["percentiles"].get(
-            target_percentile_key,
-            risk_results["percentiles"]["p50"]  # Fallback to median
+            target_percentile_key, risk_results["percentiles"]["p50"]  # Fallback to median
         )
 
         estimate = Estimate(

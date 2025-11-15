@@ -4,9 +4,9 @@ LLM prompt templates and persona definitions by AACE class.
 CRITICAL: Prompts are maturity-aware and optimized for utility T&D estimation.
 Temperature and persona vary by AACE classification level.
 """
-from typing import Dict, Any, List
-from apex.models.enums import AACEClass
+from typing import Any, Dict
 
+from apex.models.enums import AACEClass
 
 # AACE Class Persona Definitions
 PERSONAS = {
@@ -30,9 +30,8 @@ Communication style:
 - Recommend data needed for refinement
 
 Context: This is a Class 5 (Conceptual) estimate for ISO-NE regulatory review.""",
-        "focus": "High-level budget ranges, parametric drivers, key assumptions"
+        "focus": "High-level budget ranges, parametric drivers, key assumptions",
     },
-
     AACEClass.CLASS_4: {
         "name": "Feasibility Analyst",
         "temperature": 0.3,
@@ -53,9 +52,8 @@ Communication style:
 - Highlight risks and uncertainties
 
 Context: This is a Class 4 (Feasibility) estimate for utility planning purposes.""",
-        "focus": "Scope validation, gap identification, preliminary cost ranges"
+        "focus": "Scope validation, gap identification, preliminary cost ranges",
     },
-
     AACEClass.CLASS_3: {
         "name": "Budget Estimator",
         "temperature": 0.1,
@@ -76,9 +74,8 @@ Communication style:
 - Recommend appropriate contingency levels
 
 Context: This is a Class 3 (Budget) estimate for project funding approval.""",
-        "focus": "Quantity extraction, detailed assumptions, budget-level pricing"
+        "focus": "Quantity extraction, detailed assumptions, budget-level pricing",
     },
-
     AACEClass.CLASS_2: {
         "name": "Control Estimator",
         "temperature": 0.0,
@@ -99,9 +96,8 @@ Communication style:
 - Flag any missing or contradictory information
 
 Context: This is a Class 2 (Control) estimate for bid evaluation and project control.""",
-        "focus": "Bid cross-checking, detailed validation, discrepancy identification"
+        "focus": "Bid cross-checking, detailed validation, discrepancy identification",
     },
-
     AACEClass.CLASS_1: {
         "name": "Check Estimator / Auditor",
         "temperature": 0.0,
@@ -122,8 +118,8 @@ Communication style:
 - Provide audit-ready justifications
 
 Context: This is a Class 1 (Check/Bid) estimate for final bid validation and regulatory submission.""",
-        "focus": "Contractor bid validation, audit trail, discrepancy detection"
-    }
+        "focus": "Contractor bid validation, audit trail, discrepancy detection",
+    },
 }
 
 
@@ -141,9 +137,7 @@ def get_persona_config(aace_class: AACEClass) -> Dict[str, Any]:
 
 
 def get_validation_prompt(
-    aace_class: AACEClass,
-    document_type: str,
-    structured_content: Dict[str, Any]
+    aace_class: AACEClass, document_type: str, structured_content: Dict[str, Any]
 ) -> str:
     """
     Generate document validation prompt based on AACE class.
@@ -194,7 +188,7 @@ def get_narrative_prompt(
     project: Any,  # Project ORM model
     base_cost: float,
     risk_results: Dict[str, Any],
-    line_item_summary: str
+    line_item_summary: str,
 ) -> str:
     """
     Generate estimate narrative prompt.
@@ -209,7 +203,7 @@ def get_narrative_prompt(
     Returns:
         User prompt for narrative generation
     """
-    persona = PERSONAS[aace_class]
+    PERSONAS[aace_class]
 
     prompt = f"""Generate a professional estimate narrative for this utility T&D project.
 
@@ -243,11 +237,7 @@ Tone: Professional, suitable for regulatory submission to ISO-NE."""
     return prompt
 
 
-def get_assumptions_prompt(
-    aace_class: AACEClass,
-    project: Any,
-    document_summary: str
-) -> str:
+def get_assumptions_prompt(aace_class: AACEClass, project: Any, document_summary: str) -> str:
     """
     Generate assumptions extraction prompt.
 
@@ -259,7 +249,7 @@ def get_assumptions_prompt(
     Returns:
         User prompt for assumptions generation
     """
-    persona = PERSONAS[aace_class]
+    PERSONAS[aace_class]
 
     prompt = f"""Extract and generate key estimating assumptions for this utility T&D project.
 
@@ -287,11 +277,7 @@ Be specific, measurable, and verifiable. Each assumption should be actionable.""
     return prompt
 
 
-def get_exclusions_prompt(
-    aace_class: AACEClass,
-    project: Any,
-    document_summary: str
-) -> str:
+def get_exclusions_prompt(aace_class: AACEClass, project: Any, document_summary: str) -> str:
     """
     Generate exclusions identification prompt.
 
@@ -303,7 +289,7 @@ def get_exclusions_prompt(
     Returns:
         User prompt for exclusions generation
     """
-    persona = PERSONAS[aace_class]
+    PERSONAS[aace_class]
 
     prompt = f"""Identify scope exclusions for this utility T&D project estimate.
 

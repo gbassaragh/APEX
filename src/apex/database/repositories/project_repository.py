@@ -4,13 +4,14 @@ Project repository with access control queries.
 CRITICAL: Access control methods enforce application-level RBAC.
 Having an AAD token alone is NOT sufficient for project access.
 """
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from uuid import UUID
-from sqlalchemy.orm import Session
+
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from apex.database.repositories.base import BaseRepository
-from apex.models.database import Project, ProjectAccess, User, AppRole
+from apex.models.database import AppRole, Project, ProjectAccess
 from apex.models.enums import ProjectStatus
 
 
@@ -74,9 +75,8 @@ class ProjectRepository(BaseRepository[Project]):
 
         # Apply user access filter (join with ProjectAccess)
         if user_id:
-            query = (
-                query.join(ProjectAccess, Project.id == ProjectAccess.project_id)
-                .where(ProjectAccess.user_id == user_id)
+            query = query.join(ProjectAccess, Project.id == ProjectAccess.project_id).where(
+                ProjectAccess.user_id == user_id
             )
 
         # Order by creation date (newest first)
@@ -165,9 +165,8 @@ class ProjectRepository(BaseRepository[Project]):
 
         # Filter by role if specified
         if role:
-            query = (
-                query.join(AppRole, ProjectAccess.app_role_id == AppRole.id)
-                .where(AppRole.role_name == role)
+            query = query.join(AppRole, ProjectAccess.app_role_id == AppRole.id).where(
+                AppRole.role_name == role
             )
 
         # Order by creation date (newest first)

@@ -9,25 +9,20 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from apex.dependencies import (
-    get_db,
-    get_current_user,
-    get_project_repo,
-    get_audit_repo,
-)
-from apex.database.repositories.project_repository import ProjectRepository
 from apex.database.repositories.audit_repository import AuditRepository
+from apex.database.repositories.project_repository import ProjectRepository
+from apex.dependencies import get_audit_repo, get_current_user, get_db, get_project_repo
 from apex.models.database import User
+from apex.models.enums import AppRoleType, ProjectStatus
 from apex.models.schemas import (
-    ProjectCreate,
-    ProjectUpdate,
-    ProjectResponse,
-    ProjectAccessGrant,
-    ProjectAccessRevoke,
-    ProjectAccessResponse,
     PaginatedResponse,
+    ProjectAccessGrant,
+    ProjectAccessResponse,
+    ProjectAccessRevoke,
+    ProjectCreate,
+    ProjectResponse,
+    ProjectUpdate,
 )
-from apex.models.enums import ProjectStatus, AppRoleType
 
 router = APIRouter()
 
@@ -281,9 +276,7 @@ def grant_project_access(
         )
 
     # Grant access
-    access = project_repo.grant_access(
-        db, access_grant.user_id, project_id, access_grant.role_id
-    )
+    project_repo.grant_access(db, access_grant.user_id, project_id, access_grant.role_id)
 
     # Create audit log
     audit_repo.create(

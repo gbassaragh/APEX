@@ -7,13 +7,13 @@ Tests ensure GUID type works correctly across:
 - SQLite (for testing)
 """
 import uuid
+
 import pytest
-from sqlalchemy import create_engine, Column, String
-from sqlalchemy.orm import declarative_base, Session
+from sqlalchemy import Column, String, create_engine
+from sqlalchemy.orm import Session, declarative_base
 from sqlalchemy.pool import StaticPool
 
 from apex.models.database import GUID
-
 
 # Test models
 Base = declarative_base()
@@ -21,6 +21,7 @@ Base = declarative_base()
 
 class TestModel(Base):
     """Test model with GUID primary key."""
+
     __tablename__ = "test_table"
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
@@ -97,7 +98,7 @@ class TestGUIDTypeDecorator:
     def test_guid_null_handling(self, sqlite_engine):
         """Test GUID handles None values correctly."""
         # Create model without required ID should fail
-        with Session(sqlite_engine) as session:
+        with Session(sqlite_engine):
             test_obj = TestModel(name="test5")
             # Default should provide UUID
             assert test_obj.id is not None

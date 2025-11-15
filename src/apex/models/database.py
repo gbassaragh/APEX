@@ -6,26 +6,15 @@ JSON is only allowed for audit trails and validation results.
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import (
-    Column,
-    String,
-    Integer,
-    DateTime,
-    Enum as SAEnum,
-    ForeignKey,
-    JSON,
-    Float,
-    Numeric,
-    Text,
-    UniqueConstraint,
-    Index,
-)
-from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.types import TypeDecorator, CHAR
+
+from sqlalchemy import JSON, Column, DateTime
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects import mssql, postgresql
+from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.types import CHAR, TypeDecorator
 
-from apex.models.enums import ProjectStatus, ValidationStatus, AACEClass, TerrainType
-
+from apex.models.enums import AACEClass, ProjectStatus, TerrainType, ValidationStatus
 
 # Base class for all models
 Base = declarative_base()
@@ -191,7 +180,9 @@ class Document(Base):
     blob_path = Column(String(500), nullable=False)
 
     # Validation status
-    validation_status = Column(SAEnum(ValidationStatus), default=ValidationStatus.PENDING, nullable=False)
+    validation_status = Column(
+        SAEnum(ValidationStatus), default=ValidationStatus.PENDING, nullable=False
+    )
     completeness_score = Column(Integer)  # 0–100
 
     # JSON acceptable here for audit/display, NOT analytical data
@@ -245,10 +236,18 @@ class Estimate(Base):
 
     # Relationships
     project = relationship("Project", back_populates="estimates")
-    line_items = relationship("EstimateLineItem", back_populates="estimate", cascade="all, delete-orphan")
-    assumptions = relationship("EstimateAssumption", back_populates="estimate", cascade="all, delete-orphan")
-    exclusions = relationship("EstimateExclusion", back_populates="estimate", cascade="all, delete-orphan")
-    risk_factors = relationship("EstimateRiskFactor", back_populates="estimate", cascade="all, delete-orphan")
+    line_items = relationship(
+        "EstimateLineItem", back_populates="estimate", cascade="all, delete-orphan"
+    )
+    assumptions = relationship(
+        "EstimateAssumption", back_populates="estimate", cascade="all, delete-orphan"
+    )
+    exclusions = relationship(
+        "EstimateExclusion", back_populates="estimate", cascade="all, delete-orphan"
+    )
+    risk_factors = relationship(
+        "EstimateRiskFactor", back_populates="estimate", cascade="all, delete-orphan"
+    )
     audit_logs = relationship("AuditLog", back_populates="estimate")
 
 
@@ -364,7 +363,9 @@ class EstimateRiskFactor(Base):
     estimate_id = Column(GUID, ForeignKey("estimates.id"), nullable=False, index=True)
 
     factor_name = Column(String(255), nullable=False)
-    distribution = Column(String(50), nullable=False)  # "triangular", "normal", "uniform", "lognormal", "pert"
+    distribution = Column(
+        String(50), nullable=False
+    )  # "triangular", "normal", "uniform", "lognormal", "pert"
 
     # Distribution parameters
     param_min = Column(Float)

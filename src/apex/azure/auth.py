@@ -7,6 +7,7 @@ Prevents blocking the FastAPI event loop during initialization.
 import asyncio
 import logging
 from typing import Optional
+
 from azure.identity.aio import DefaultAzureCredential
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ async def reset_credential() -> None:
     async with _credential_lock:
         if _credential is not None:
             logger.warning("Resetting cached Azure credential")
-            if hasattr(_credential, 'close'):
+            if hasattr(_credential, "close"):
                 await _credential.close()  # Clean up async resources
             _credential = None
             _init_complete = False

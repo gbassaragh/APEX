@@ -6,17 +6,16 @@ Provides:
 - MockDocumentParser - Simulated Azure Document Intelligence
 - MockLLMOrchestrator - Simulated Azure OpenAI
 """
-from typing import Dict, Any, Optional
-from io import BytesIO
 import asyncio
+from typing import Any, Dict, Optional
 
 from apex.models.enums import AACEClass
 from apex.utils.errors import BusinessRuleViolation
 
-
 # ============================================================================
 # Mock Blob Storage
 # ============================================================================
+
 
 class MockBlobStorageClient:
     """
@@ -104,6 +103,7 @@ class MockBlobStorageClient:
 # Mock Document Parser
 # ============================================================================
 
+
 class MockDocumentParser:
     """
     Mock Azure Document Intelligence parser for testing.
@@ -132,10 +132,7 @@ class MockDocumentParser:
         self._timeout = timeout
 
     async def parse_document(
-        self,
-        document_bytes: bytes,
-        filename: str,
-        blob_path: Optional[str] = None
+        self, document_bytes: bytes, filename: str, blob_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """Parse document (mock implementation)."""
         self._parse_count += 1
@@ -144,7 +141,7 @@ class MockDocumentParser:
         if self._circuit_breaker_open:
             raise BusinessRuleViolation(
                 message="Azure Document Intelligence circuit breaker is OPEN",
-                code="CIRCUIT_BREAKER_OPEN"
+                code="CIRCUIT_BREAKER_OPEN",
             )
 
         # Simulate timeout
@@ -165,20 +162,16 @@ class MockDocumentParser:
                     "width": 8.5,
                     "height": 11,
                     "unit": "inch",
-                    "lines": [
-                        {"content": "Test document content", "polygon": None}
-                    ]
+                    "lines": [{"content": "Test document content", "polygon": None}],
                 }
             ],
             "tables": [],
-            "paragraphs": [
-                {"content": "Test paragraph", "role": None}
-            ],
+            "paragraphs": [{"content": "Test paragraph", "role": None}],
             "metadata": {
                 "page_count": 1,
                 "model_id": "prebuilt-layout",
-                "api_version": "2024-02-15-preview"
-            }
+                "api_version": "2024-02-15-preview",
+            },
         }
 
     def get_stats(self) -> Dict[str, int]:
@@ -195,6 +188,7 @@ class MockDocumentParser:
 # ============================================================================
 # Mock LLM Orchestrator
 # ============================================================================
+
 
 class MockLLMOrchestrator:
     """
@@ -233,10 +227,7 @@ class MockLLMOrchestrator:
 
         # Simulate error
         if self._error_message:
-            raise BusinessRuleViolation(
-                message=self._error_message,
-                code="LLM_VALIDATION_ERROR"
-            )
+            raise BusinessRuleViolation(message=self._error_message, code="LLM_VALIDATION_ERROR")
 
         # Return configured result or default
         if self._validation_result:
