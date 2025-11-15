@@ -27,6 +27,7 @@ class TestConfigValidation:
         assert "AZURE_SQL_DATABASE" in required_fields
         assert "AZURE_OPENAI_ENDPOINT" in required_fields
         assert "AZURE_OPENAI_DEPLOYMENT" in required_fields
+        assert "AZURE_DI_ENDPOINT" in required_fields
         assert "AZURE_STORAGE_ACCOUNT" in required_fields
 
     def test_config_with_valid_minimal_settings(self):
@@ -37,6 +38,7 @@ class TestConfigValidation:
             AZURE_SQL_DATABASE="test_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -52,6 +54,7 @@ class TestConfigValidation:
             AZURE_SQL_DATABASE="test_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -90,6 +93,7 @@ class TestDatabaseURL:
             AZURE_SQL_DATABASE="apex_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -114,6 +118,7 @@ class TestDatabaseURL:
             AZURE_SQL_DRIVER="ODBC Driver 18 for SQL Server",  # Has spaces
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -132,6 +137,7 @@ class TestDatabaseURL:
             AZURE_SQL_DRIVER="ODBC Driver 17 for SQL Server",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -150,6 +156,7 @@ class TestOptionalFields:
             AZURE_SQL_DATABASE="test_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -163,6 +170,7 @@ class TestOptionalFields:
             AZURE_SQL_DATABASE="test_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -176,6 +184,7 @@ class TestOptionalFields:
             AZURE_SQL_DATABASE="test_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
             AZURE_KEY_VAULT_URL="https://test-kv.vault.azure.net/",
             AZURE_APPINSIGHTS_CONNECTION_STRING="InstrumentationKey=test-key",
@@ -197,6 +206,7 @@ class TestEnvironmentVariables:
         os.environ["AZURE_SQL_DATABASE"] = "env_test_db"
         os.environ["AZURE_OPENAI_ENDPOINT"] = "https://env-test.openai.azure.com/"
         os.environ["AZURE_OPENAI_DEPLOYMENT"] = "env-gpt-4"
+        os.environ["AZURE_DI_ENDPOINT"] = "https://env-test.cognitiveservices.azure.com/"
         os.environ["AZURE_STORAGE_ACCOUNT"] = "envteststorage"
 
         try:
@@ -211,6 +221,7 @@ class TestEnvironmentVariables:
             del os.environ["AZURE_SQL_DATABASE"]
             del os.environ["AZURE_OPENAI_ENDPOINT"]
             del os.environ["AZURE_OPENAI_DEPLOYMENT"]
+            del os.environ["AZURE_DI_ENDPOINT"]
             del os.environ["AZURE_STORAGE_ACCOUNT"]
 
     def test_config_cors_origins_list_parsing(self):
@@ -221,6 +232,7 @@ class TestEnvironmentVariables:
             AZURE_SQL_DATABASE="test_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -239,6 +251,7 @@ class TestSecurityValidation:
             AZURE_SQL_DATABASE="test_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 
@@ -260,6 +273,7 @@ class TestSecurityValidation:
             AZURE_SQL_DATABASE="test_db",
             AZURE_OPENAI_ENDPOINT="https://test.openai.azure.com/",
             AZURE_OPENAI_DEPLOYMENT="gpt-4",
+            AZURE_DI_ENDPOINT="https://test.cognitiveservices.azure.com/",
             AZURE_STORAGE_ACCOUNT="teststorageaccount",
         )
 

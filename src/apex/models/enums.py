@@ -16,6 +16,10 @@ class ProjectStatus(str, Enum):
     COMPLETE = "complete"
     ARCHIVED = "archived"
 
+    def __str__(self):
+        """Return the enum value as string for serialization."""
+        return self.value
+
 
 class ValidationStatus(str, Enum):
     """Document validation status."""
@@ -24,6 +28,10 @@ class ValidationStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
     MANUAL_REVIEW = "manual_review"
+
+    def __str__(self):
+        """Return the enum value as string for serialization."""
+        return self.value
 
 
 class AACEClass(str, Enum):
@@ -43,6 +51,10 @@ class AACEClass(str, Enum):
     CLASS_2 = "class_2"
     CLASS_1 = "class_1"
 
+    def __str__(self):
+        """Return the enum value as string for serialization."""
+        return self.value
+
 
 class TerrainType(str, Enum):
     """Terrain classification for transmission line projects."""
@@ -52,6 +64,10 @@ class TerrainType(str, Enum):
     MOUNTAINOUS = "mountainous"
     URBAN = "urban"
     WETLAND = "wetland"
+
+    def __str__(self):
+        """Return the enum value as string for serialization."""
+        return self.value
 
 
 class AppRoleType(int, Enum):

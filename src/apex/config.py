@@ -126,4 +126,24 @@ class Config(BaseSettings):
 
 
 # Global config instance
-config = Config()
+# Lazy instantiation to avoid errors during test collection
+_config_instance = None
+
+
+def get_config() -> Config:
+    """Get or create the global config instance."""
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = Config()
+    return _config_instance
+
+
+# For backward compatibility, create config only if not in test environment
+import sys
+
+# Check if pytest is running by looking at sys.modules
+if "pytest" not in sys.modules and "_pytest" not in sys.modules:
+    config = Config()
+else:
+    # During tests, config will need to be mocked or created with test values
+    config = None  # type: ignore
