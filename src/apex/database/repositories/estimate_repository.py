@@ -30,11 +30,11 @@ class EstimateRepository(BaseRepository[Estimate]):
     def create_estimate_with_hierarchy(
         self,
         db: Session,
-        estimate_data: Dict,
+        estimate: Estimate,
         line_items: List[EstimateLineItem],
-        assumptions: List[Dict],
-        exclusions: List[Dict],
-        risk_factors: List[Dict],
+        assumptions: List[EstimateAssumption],
+        exclusions: List[EstimateExclusion],
+        risk_factors: List[EstimateRiskFactor],
     ) -> Estimate:
         """
         Create complete estimate with all related entities in single transaction.
@@ -43,17 +43,16 @@ class EstimateRepository(BaseRepository[Estimate]):
 
         Args:
             db: Database session
-            estimate_data: Estimate attributes
+            estimate: Estimate ORM entity (not yet persisted)
             line_items: Flat list of line items with wbs_code and _temp_parent_ref
-            assumptions: List of assumption dicts
-            exclusions: List of exclusion dicts
-            risk_factors: List of risk factor dicts
+            assumptions: List of assumption entities
+            exclusions: List of exclusion entities
+            risk_factors: List of risk factor entities
 
         Returns:
-            Created Estimate with all relationships
+            Persisted Estimate with all relationships and generated IDs
         """
-        # Create main estimate
-        estimate = Estimate(**estimate_data)
+        # Persist main estimate
         db.add(estimate)
         db.flush()  # Get estimate ID
 
@@ -82,28 +81,19 @@ class EstimateRepository(BaseRepository[Estimate]):
                     )
                 item.parent_line_item_id = parent.id
 
-        # Create assumptions
-        for assumption_data in assumptions:
-            assumption = EstimateAssumption(
-                estimate_id=estimate.id,
-                **assumption_data
-            )
+        # Add assumptions
+        for assumption in assumptions:
+            assumption.estimate_id = estimate.id
             db.add(assumption)
 
-        # Create exclusions
-        for exclusion_data in exclusions:
-            exclusion = EstimateExclusion(
-                estimate_id=estimate.id,
-                **exclusion_data
-            )
+        # Add exclusions
+        for exclusion in exclusions:
+            exclusion.estimate_id = estimate.id
             db.add(exclusion)
 
-        # Create risk factors
-        for risk_data in risk_factors:
-            risk_factor = EstimateRiskFactor(
-                estimate_id=estimate.id,
-                **risk_data
-            )
+        # Add risk factors
+        for risk_factor in risk_factors:
+            risk_factor.estimate_id = estimate.id
             db.add(risk_factor)
 
         db.flush()
