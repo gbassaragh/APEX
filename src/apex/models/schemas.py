@@ -203,7 +203,7 @@ class DocumentValidationResult(BaseModel):
 
     document_id: UUID
     validation_status: ValidationStatus
-    completeness_score: int = Field(..., ge=0, le=100)
+    completeness_score: Optional[int] = Field(None, ge=0, le=100)
     issues: List[str] = Field(default_factory=list)
     recommendations: List[str] = Field(default_factory=list)
     suitable_for_estimation: bool
