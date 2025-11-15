@@ -9,6 +9,7 @@ from datetime import datetime
 from apex.dependencies import get_db
 from apex.azure.blob_storage import BlobStorageClient
 from apex.config import config
+from apex.utils.retry import azure_retry
 
 router = APIRouter()
 
@@ -29,6 +30,7 @@ async def liveness_check():
 
 
 @router.get("/health/ready", status_code=http_status.HTTP_200_OK)
+@azure_retry
 async def readiness_check(response: Response, db: Session = Depends(get_db)):
     """
     Readiness probe for Kubernetes/Container Apps.

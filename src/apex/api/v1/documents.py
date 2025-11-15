@@ -50,6 +50,7 @@ from apex.models.schemas import (
 from apex.models.enums import ValidationStatus, AACEClass
 from apex.config import config
 from apex.utils.errors import BusinessRuleViolation
+from apex.utils.retry import azure_retry
 
 router = APIRouter()
 
@@ -113,6 +114,7 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
 
 
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
+@azure_retry
 async def upload_document(
     project_id: UUID = Form(..., description="Project UUID to associate document with"),
     document_type: str = Form(..., description="Document type: scope, engineering, schedule, bid"),
@@ -228,6 +230,7 @@ async def upload_document(
 
 
 @router.post("/{document_id}/validate", response_model=DocumentValidationResult)
+@azure_retry
 async def validate_document(
     document_id: UUID,
     db: Session = Depends(get_db),
@@ -530,6 +533,7 @@ def list_project_documents(
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@azure_retry
 async def delete_document(
     document_id: UUID,
     db: Session = Depends(get_db),
