@@ -75,10 +75,12 @@ class EstimateRepository(BaseRepository[Estimate]):
             if parent_wbs:
                 parent = wbs_map.get(parent_wbs)
                 if parent is None:
-                    raise ValueError(
-                        f"Unknown parent WBS code '{parent_wbs}' for line item: {item.description}. "
-                        f"Available WBS codes: {sorted(wbs_map.keys())}"
+                    available_codes = sorted(wbs_map.keys())
+                    msg = (
+                        f"Unknown parent WBS code '{parent_wbs}' for line item: "
+                        f"{item.description}. Available WBS codes: {available_codes}"
                     )
+                    raise ValueError(msg)
                 item.parent_line_item_id = parent.id
 
         # Add assumptions

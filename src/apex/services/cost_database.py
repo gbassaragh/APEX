@@ -332,9 +332,9 @@ class CostDatabaseService:
         Returns:
             Cost items with adjusted unit costs
         """
-        logger.info(
-            f"Applying adjustments for terrain={project.terrain_type}, voltage={project.voltage_level}kV"
-        )
+        terrain = project.terrain_type
+        voltage = project.voltage_level
+        logger.info(f"Applying adjustments for terrain={terrain}, voltage={voltage}kV")
 
         # Terrain difficulty multipliers
         terrain_multipliers = {

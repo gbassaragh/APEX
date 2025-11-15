@@ -170,17 +170,21 @@ async def upload_document(
 
     # Validate MIME type
     if file.content_type not in config.ALLOWED_MIME_TYPES:
+        allowed_types = ", ".join(config.ALLOWED_MIME_TYPES)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: {file.content_type}. Allowed types: {', '.join(config.ALLOWED_MIME_TYPES)}",
+            detail=f"Unsupported file type: {file.content_type}. Allowed types: {allowed_types}",
         )
 
     # Validate file size (read and check before processing)
     file_content = await file.read()
     if len(file_content) > config.max_upload_size_bytes:
+        file_size_mb = len(file_content) / 1024 / 1024
+        max_size_mb = config.MAX_UPLOAD_SIZE_MB
+        msg = f"File size ({file_size_mb:.2f} MB) exceeds maximum allowed size of {max_size_mb} MB"
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File size ({len(file_content) / 1024 / 1024:.2f} MB) exceeds maximum allowed size of {config.MAX_UPLOAD_SIZE_MB} MB",
+            detail=msg,
         )
 
     # Sanitize filename with comprehensive security checks
@@ -305,9 +309,10 @@ async def validate_document(
         except BusinessRuleViolation as circuit_error:
             # Circuit breaker open - service temporarily unavailable
             if circuit_error.code == "CIRCUIT_BREAKER_OPEN":
+                msg = f"Document parsing service temporarily unavailable: {circuit_error.message}"
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=f"Document parsing service temporarily unavailable: {circuit_error.message}",
+                    detail=msg,
                 )
             elif circuit_error.code == "UNSUPPORTED_FORMAT":
                 raise HTTPException(
@@ -353,7 +358,8 @@ async def validate_document(
         # Step 2: Determine AACE class for LLM routing
         # For document validation (pre-estimation), use conservative class assumption:
         # - Bid documents: CLASS_2 (Control estimate - auditor persona)
-        # - Other documents: CLASS_4 (Feasibility - checking completeness for scope/engineering/schedule)
+        # - Other documents: CLASS_4 (Feasibility - checking completeness
+        #   for scope/engineering/schedule)
         aace_class = AACEClass.CLASS_2 if document.document_type == "bid" else AACEClass.CLASS_4
 
         # Step 3: Validate with LLM orchestrator

@@ -270,9 +270,10 @@ def grant_project_access(
     try:
         AppRoleType(access_grant.role_id)
     except ValueError:
+        valid_roles = [r.value for r in AppRoleType]
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role_id: {access_grant.role_id}. Must be one of: {[r.value for r in AppRoleType]}",
+            detail=f"Invalid role_id: {access_grant.role_id}. Must be one of: {valid_roles}",
         )
 
     # Grant access
