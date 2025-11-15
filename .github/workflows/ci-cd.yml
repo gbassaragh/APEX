@@ -50,7 +50,7 @@ jobs:
         run: black src/ tests/ --check --line-length 100
 
       - name: Check import ordering (isort)
-        run: isort src/ tests/ --check-only --profile black
+        run: isort src/ tests/ --check-only --profile black --line-length 100
 
       - name: Lint with Flake8
         run: flake8 src/ tests/ --max-line-length=100 --extend-ignore=E203,W503
