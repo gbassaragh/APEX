@@ -236,13 +236,13 @@ class EstimateLineItemResponse(EstimateLineItemBase):
 class RiskFactorInput(BaseModel):
     """Input schema for Monte Carlo risk factors."""
 
-    factor_name: str
+    name: str
     distribution: str  # "triangular", "normal", "uniform", "lognormal", "pert"
-    param_min: Optional[float] = None
-    param_likely: Optional[float] = None
-    param_max: Optional[float] = None
-    param_mean: Optional[float] = None
-    param_std_dev: Optional[float] = None
+    min_value: Optional[float] = None
+    most_likely: Optional[float] = None
+    max_value: Optional[float] = None
+    mean: Optional[float] = None
+    std_dev: Optional[float] = None
 
 
 class EstimateGenerateRequest(BaseModel):

@@ -224,6 +224,7 @@ class EstimateGenerator:
         cost_code_map = self._get_cost_code_map(db)
 
         base_cost, line_items = self.cost_db_service.compute_base_cost(
+            db=db,
             project=project,
             documents=documents,
             cost_code_map=cost_code_map,
@@ -296,6 +297,7 @@ class EstimateGenerator:
             aace_class=aace_class,
             base_cost=base_cost,
             contingency_pct=contingency_pct,
+            confidence_level=confidence_level,
             risk_results=risk_results,
             narrative=narrative,
             user=user,
@@ -320,7 +322,7 @@ class EstimateGenerator:
         ]
 
         # Build risk factor entities
-        # MEDIUM FIX: Persist all distribution parameters for audit trail
+        # Persist all distribution parameters for complete audit trail
         risk_factor_entities = []
         for factor in risk_factors.values():
             risk_factor_entity = EstimateRiskFactor(
@@ -335,9 +337,10 @@ class EstimateGenerator:
                 risk_factor_entity.param_likely = factor.most_likely
             if factor.max_value is not None:
                 risk_factor_entity.param_max = factor.max_value
-
-            # Note: param_mean and param_std_dev columns would need to be added to database schema
-            # For now, these are lost - production would persist in additional columns or JSON
+            if factor.mean is not None:
+                risk_factor_entity.param_mean = factor.mean
+            if factor.std_dev is not None:
+                risk_factor_entity.param_std_dev = factor.std_dev
 
             risk_factor_entities.append(risk_factor_entity)
 
@@ -520,6 +523,7 @@ class EstimateGenerator:
         aace_class: AACEClass,
         base_cost: Decimal,
         contingency_pct: float,
+        confidence_level: float,
         risk_results: Dict[str, Any],
         narrative: str,
         user: User,
@@ -532,6 +536,7 @@ class EstimateGenerator:
             aace_class: AACE classification
             base_cost: Base cost
             contingency_pct: Contingency percentage
+            confidence_level: Target confidence level (e.g., 0.80 for P80)
             risk_results: Monte Carlo results
             narrative: Generated narrative
             user: Current user

@@ -37,17 +37,18 @@ class CostDatabaseService:
     6. Return base cost + flat list of EstimateLineItem entities
     """
 
-    def __init__(self, db: Session):
+    def __init__(self):
         """
         Initialize cost database service.
 
-        Args:
-            db: SQLAlchemy database session (injected dependency)
+        Note: Database session is passed to methods, not stored in __init__.
+        This follows the stateless service pattern for Azure Container Apps.
         """
-        self.db = db
+        pass
 
     def compute_base_cost(
         self,
+        db: Session,
         project: Project,
         documents: List[Document],
         cost_code_map: Dict[str, CostCode],
@@ -56,6 +57,7 @@ class CostDatabaseService:
         Main entry point for base cost computation.
 
         Args:
+            db: SQLAlchemy database session (for future cost code lookups)
             project: Project ORM instance
             documents: List of validated documents
             cost_code_map: Dictionary of cost code ID -> CostCode entity
