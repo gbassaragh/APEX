@@ -10,35 +10,33 @@ from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from apex.azure.blob_storage import BlobStorageClient
 from apex.config import config
 from apex.database.repositories.audit_repository import AuditRepository
 from apex.database.repositories.document_repository import DocumentRepository
+from apex.database.repositories.job_repository import JobRepository
 from apex.database.repositories.project_repository import ProjectRepository
 from apex.dependencies import (
     get_audit_repo,
     get_blob_storage,
     get_current_user,
     get_db,
-    get_document_parser,
     get_document_repo,
-    get_llm_orchestrator,
+    get_job_repo,
     get_project_repo,
 )
 from apex.models.database import User
-from apex.models.enums import AACEClass, ValidationStatus
+from apex.models.enums import ValidationStatus
 from apex.models.schemas import (
     DocumentResponse,
     DocumentUploadResponse,
-    DocumentValidationResult,
+    JobStatusResponse,
     PaginatedResponse,
 )
-from apex.services.document_parser import DocumentParser
-from apex.services.llm.orchestrator import LLMOrchestrator
-from apex.utils.errors import BusinessRuleViolation
+from apex.services.background_jobs import process_document_validation
 from apex.utils.retry import azure_retry
 
 logger = logging.getLogger(__name__)
@@ -243,31 +241,24 @@ async def upload_document(
         )
 
 
-@router.post("/{document_id}/validate", response_model=DocumentValidationResult)
+@router.post(
+    "/{document_id}/validate", response_model=JobStatusResponse, status_code=status.HTTP_202_ACCEPTED
+)
 @azure_retry
 async def validate_document(
     document_id: UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     project_repo: ProjectRepository = Depends(get_project_repo),
     document_repo: DocumentRepository = Depends(get_document_repo),
-    audit_repo: AuditRepository = Depends(get_audit_repo),
-    blob_storage: BlobStorageClient = Depends(get_blob_storage),
-    document_parser: DocumentParser = Depends(get_document_parser),
-    llm_orchestrator: LLMOrchestrator = Depends(get_llm_orchestrator),
+    job_repo: JobRepository = Depends(get_job_repo),
 ):
     """
-    Trigger AI-powered document validation.
+    Queue AI-powered document validation as a background job.
 
-    Workflow:
-    1. Load document from blob storage
-    2. Parse document using Azure Document Intelligence
-    3. Validate using LLM orchestrator
-    4. Update document with validation results
-
-    This is a synchronous operation that may take 30s-2min depending on document size.
+    Use GET /jobs/{job_id} to poll status.
     """
-    # Get document
     document = document_repo.get(db, document_id)
     if not document:
         raise HTTPException(
@@ -282,191 +273,28 @@ async def validate_document(
             detail=f"User does not have access to project {document.project_id}",
         )
 
-    try:
-        # Load document from blob storage
-        document_bytes = await blob_storage.download_document(
-            container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
-            blob_name=document.blob_path,
-        )
+    job = job_repo.create_job(
+        db=db,
+        job_type="document_validation",
+        user_id=current_user.id,
+        document_id=document_id,
+        project_id=document.project_id,
+    )
 
-        # Step 1: Parse document using DocumentParser (Azure Document Intelligence)
-        try:
-            structured_content = await document_parser.parse_document(
-                document_bytes=document_bytes,
-                filename=Path(document.blob_path).name,
-                blob_path=f"{config.AZURE_STORAGE_CONTAINER_UPLOADS}/{document.blob_path}",
-            )
+    background_tasks.add_task(process_document_validation, job.id, document_id, current_user.id)
 
-            # Save parsed content immediately (even if validation fails later)
-            document_repo.update_validation_result(
-                db=db,
-                document_id=document_id,
-                validation_result={"parsed_content": structured_content},
-                completeness_score=None,
-                validation_status=ValidationStatus.PENDING,
-            )
-
-        except BusinessRuleViolation as circuit_error:
-            # Circuit breaker open - service temporarily unavailable
-            if circuit_error.code == "CIRCUIT_BREAKER_OPEN":
-                msg = f"Document parsing service temporarily unavailable: {str(circuit_error)}"
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=msg,
-                )
-            elif circuit_error.code == "UNSUPPORTED_FORMAT":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=str(circuit_error),
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Document parsing failed: {str(circuit_error)}",
-                )
-
-        except TimeoutError as timeout_error:
-            # Document Intelligence timeout
-            logger.error(f"Document parsing timeout for {document_id}: {timeout_error}")
-            document_repo.update_validation_result(
-                db=db,
-                document_id=document_id,
-                validation_result={"error": "Parsing timeout", "details": str(timeout_error)},
-                completeness_score=0,
-                validation_status=ValidationStatus.FAILED,
-            )
-            db.commit()  # Commit error state before raising exception
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Document parsing timeout: {str(timeout_error)}",
-            )
-
-        except Exception as parse_error:
-            # Other parsing errors (DLQ handled internally by DocumentParser)
-            logger.error(f"Document parsing error for {document_id}: {parse_error}", exc_info=True)
-            document_repo.update_validation_result(
-                db=db,
-                document_id=document_id,
-                validation_result={"error": "Parsing failed", "details": str(parse_error)},
-                completeness_score=0,
-                validation_status=ValidationStatus.FAILED,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Document parsing failed: {str(parse_error)}",
-            )
-
-        # Step 2: Determine AACE class for LLM routing
-        # For document validation (pre-estimation), use conservative class assumption:
-        # - Bid documents: CLASS_2 (Control estimate - auditor persona)
-        # - Other documents: CLASS_4 (Feasibility - checking completeness
-        #   for scope/engineering/schedule)
-        aace_class = AACEClass.CLASS_2 if document.document_type == "bid" else AACEClass.CLASS_4
-
-        # Step 3: Validate with LLM orchestrator
-        try:
-            llm_validation = await llm_orchestrator.validate_document(
-                aace_class=aace_class,
-                document_type=document.document_type,
-                structured_content=structured_content,
-            )
-
-            # Extract validation results
-            completeness_score = llm_validation.get("completeness_score", 0)
-            suitable_for_estimation = llm_validation.get("suitable_for_estimation", False)
-
-            # Determine validation status
-            if suitable_for_estimation and completeness_score >= 70:
-                validation_status = ValidationStatus.PASSED
-            elif completeness_score >= 50:
-                validation_status = ValidationStatus.MANUAL_REVIEW
-            else:
-                validation_status = ValidationStatus.FAILED
-
-            # Build complete validation result (includes parsed content + LLM validation)
-            validation_result = {
-                "parsed_content": structured_content,
-                "llm_validation": llm_validation,
-                "aace_class_used": aace_class.value,
-            }
-
-        except BusinessRuleViolation as llm_error:
-            # LLM validation failed (hallucination detection, response extraction failure)
-            logger.error(f"LLM validation error for {document_id}: {llm_error}")
-            validation_status = ValidationStatus.MANUAL_REVIEW
-            validation_result = {
-                "parsed_content": structured_content,
-                "llm_error": str(llm_error),
-                "aace_class_used": aace_class.value,
-                "issues": [f"LLM validation failed: {str(llm_error)}"],
-                "recommendations": ["Manual review required due to LLM validation failure"],
-            }
-            completeness_score = None
-            suitable_for_estimation = False
-
-        except Exception as llm_error:
-            # Unexpected LLM errors
-            logger.error(f"Unexpected LLM error for {document_id}: {llm_error}", exc_info=True)
-            validation_status = ValidationStatus.MANUAL_REVIEW
-            validation_result = {
-                "parsed_content": structured_content,
-                "llm_error": str(llm_error),
-                "aace_class_used": aace_class.value,
-                "issues": [f"LLM validation error: {str(llm_error)}"],
-                "recommendations": ["Manual review required due to LLM error"],
-            }
-            completeness_score = None
-            suitable_for_estimation = False
-
-        # Update document with validation results
-        updated_document = document_repo.update_validation_result(
-            db=db,
-            document_id=document_id,
-            validation_result=validation_result,
-            completeness_score=completeness_score,
-            validation_status=validation_status,
-        )
-
-        # Create audit log
-        audit_repo.create(
-            db,
-            {
-                "project_id": document.project_id,
-                "user_id": current_user.id,
-                "action": "document_validated",
-                "details": {
-                    "document_id": str(document_id),
-                    "validation_status": validation_status.value,
-                    "completeness_score": completeness_score,
-                },
-            },
-        )
-
-        return DocumentValidationResult(
-            document_id=document_id,
-            validation_status=updated_document.validation_status,
-            completeness_score=updated_document.completeness_score,
-            issues=validation_result.get("issues", []),
-            recommendations=validation_result.get("recommendations", []),
-            suitable_for_estimation=suitable_for_estimation,
-        )
-
-    except HTTPException:
-        # Re-raise HTTP exceptions (from inner error handlers)
-        raise
-    except Exception as exc:
-        # Only catch non-HTTP exceptions - update document to FAILED status
-        document_repo.update_validation_result(
-            db=db,
-            document_id=document_id,
-            validation_result={"error": str(exc)},
-            completeness_score=0,
-            validation_status=ValidationStatus.FAILED,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Document validation failed: {str(exc)}",
-        )
+    return JobStatusResponse(
+        id=job.id,
+        job_type=job.job_type,
+        status=job.status,
+        progress_percent=job.progress_percent,
+        current_step="Job queued",
+        result_data=None,
+        error_message=None,
+        created_at=job.created_at,
+        started_at=None,
+        completed_at=None,
+    )
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)

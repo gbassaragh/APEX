@@ -270,6 +270,24 @@ class MockLLMOrchestrator:
         """Generate estimate narrative (mock implementation)."""
         return f"Test narrative for {project.project_name} with base cost ${base_cost:,.2f}"
 
+    async def generate_assumptions(
+        self,
+        aace_class: AACEClass,
+        project: Any,
+        documents: Any,
+    ) -> list[str]:
+        """Generate assumptions (mock implementation)."""
+        return ["Assumption A", "Assumption B"]
+
+    async def generate_exclusions(
+        self,
+        aace_class: AACEClass,
+        project: Any,
+        documents: Any,
+    ) -> list[str]:
+        """Generate exclusions (mock implementation)."""
+        return ["Exclusion A", "Exclusion B"]
+
     def get_stats(self) -> Dict[str, int]:
         """Get operation statistics."""
         return {

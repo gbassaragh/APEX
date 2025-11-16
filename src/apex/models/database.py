@@ -196,6 +196,47 @@ class Document(Base):
     project = relationship("Project", back_populates="documents")
 
 
+class BackgroundJob(Base):
+    """
+    Background job tracking for long-running operations.
+
+    Used for document validation and estimate generation.
+    """
+
+    __tablename__ = "background_jobs"
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    job_type = Column(String(50), nullable=False, index=True)  # "document_validation", "estimate_generation"
+    status = Column(String(20), nullable=False, index=True)  # "pending", "running", "completed", "failed"
+
+    # Related entity IDs
+    document_id = Column(GUID, ForeignKey("documents.id"), nullable=True, index=True)
+    project_id = Column(GUID, ForeignKey("projects.id"), nullable=True, index=True)
+    estimate_id = Column(GUID, ForeignKey("estimates.id"), nullable=True, index=True)
+
+    # Progress tracking
+    progress_percent = Column(Integer, default=0)  # 0-100
+    current_step = Column(String(255))
+
+    # Result storage
+    result_data = Column(JSON)
+    error_message = Column(Text)
+
+    # Audit
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    created_by_id = Column(GUID, ForeignKey("users.id"), nullable=False)
+
+    # Relationships
+    user = relationship("User")
+    document = relationship("Document")
+    project = relationship("Project")
+    estimate = relationship("Estimate")
+
+    __table_args__ = (Index("ix_background_jobs_status_created", "status", "created_at"),)
+
+
 # Estimate & Cost Breakdown Models
 
 

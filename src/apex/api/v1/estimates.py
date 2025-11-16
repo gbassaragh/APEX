@@ -9,18 +9,17 @@ Handles full estimate orchestration workflow including:
 """
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from apex.database.repositories.audit_repository import AuditRepository
 from apex.database.repositories.estimate_repository import EstimateRepository
+from apex.database.repositories.job_repository import JobRepository
 from apex.database.repositories.project_repository import ProjectRepository
 from apex.dependencies import (
-    get_audit_repo,
     get_current_user,
     get_db,
-    get_estimate_generator,
     get_estimate_repo,
+    get_job_repo,
     get_project_repo,
 )
 from apex.models.database import User
@@ -29,58 +28,34 @@ from apex.models.schemas import (
     EstimateGenerateRequest,
     EstimateLineItemResponse,
     EstimateResponse,
+    JobStatusResponse,
     PaginatedResponse,
 )
-from apex.services.estimate_generator import EstimateGenerator
+from apex.services.background_jobs import process_estimate_generation
 
 router = APIRouter()
 
 
-@router.post(
-    "/generate", response_model=EstimateDetailResponse, status_code=status.HTTP_201_CREATED
-)
-def generate_estimate(
+@router.post("/generate", response_model=JobStatusResponse, status_code=status.HTTP_202_ACCEPTED)
+async def generate_estimate(
     request: EstimateGenerateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     project_repo: ProjectRepository = Depends(get_project_repo),
-    estimate_repo: EstimateRepository = Depends(get_estimate_repo),
-    estimate_generator: EstimateGenerator = Depends(get_estimate_generator),
-    audit_repo: AuditRepository = Depends(get_audit_repo),
+    job_repo: JobRepository = Depends(get_job_repo),
 ):
     """
-    Generate new estimate for a project.
+    Queue estimate generation as a background job.
 
-    This is a long-running synchronous operation that may take 30s-5min depending on:
-    - Number of documents to analyze
-    - Complexity of cost breakdown structure
-    - Monte Carlo simulation iterations
-    - LLM narrative generation time
-
-    Workflow:
-    1. Load project & documents
-    2. Check user access (ProjectAccess table)
-    3. Derive completeness + maturity → AACEClassifier.classify()
-    4. CostDatabaseService.compute_base_cost() → (base_cost, line_items)
-    5. Build RiskFactor objects, run Monte Carlo → risk_results
-    6. Compute contingency percentage from P_target vs base
-    7. Call LLMOrchestrator to generate narrative, assumptions, exclusions
-    8. Build ORM entities (Estimate, EstimateRiskFactor, EstimateAssumption, EstimateExclusion)
-    9. Call estimate_repo.create_estimate_with_hierarchy() to persist in one transaction
-    10. Create AuditLog
-    11. Return Estimate entity with full details
-
-    NOTE: This is currently synchronous. Future enhancement will use background job pattern
-    with polling endpoint for status.
+    Use GET /jobs/{job_id} to poll status and retrieve results.
     """
-    # Check user access to project
     if not project_repo.check_user_access(db, current_user.id, request.project_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"User does not have access to project {request.project_id}",
         )
 
-    # Verify project exists
     project = project_repo.get(db, request.project_id)
     if not project:
         raise HTTPException(
@@ -88,81 +63,37 @@ def generate_estimate(
             detail=f"Project {request.project_id} not found",
         )
 
-    # Convert RiskFactorInput DTOs to internal RiskFactor objects
+    job = job_repo.create_job(
+        db=db,
+        job_type="estimate_generation",
+        user_id=current_user.id,
+        project_id=request.project_id,
+    )
+
     risk_factors_dto = [rf.model_dump() for rf in request.risk_factors]
 
-    try:
-        # Call main orchestration service
-        # This executes the full 14-step workflow
-        estimate = estimate_generator.generate_estimate(
-            db=db,
-            project_id=request.project_id,
-            risk_factors_dto=risk_factors_dto,
-            confidence_level=request.confidence_level,
-            monte_carlo_iterations=request.monte_carlo_iterations,
-            user=current_user,
-        )
+    background_tasks.add_task(
+        process_estimate_generation,
+        job.id,
+        request.project_id,
+        risk_factors_dto,
+        request.confidence_level,
+        request.monte_carlo_iterations,
+        current_user.id,
+    )
 
-        # Load estimate with all details for response
-        estimate_with_details = estimate_repo.get_estimate_with_details(db, estimate.id)
-
-        # Convert to response schema
-        return EstimateDetailResponse(
-            id=estimate_with_details.id,
-            project_id=estimate_with_details.project_id,
-            estimate_number=estimate_with_details.estimate_number,
-            aace_class=estimate_with_details.aace_class,
-            base_cost=estimate_with_details.base_cost,
-            contingency_percentage=estimate_with_details.contingency_percentage,
-            p50_cost=estimate_with_details.p50_cost,
-            p80_cost=estimate_with_details.p80_cost,
-            p95_cost=estimate_with_details.p95_cost,
-            narrative=estimate_with_details.narrative,
-            created_at=estimate_with_details.created_at,
-            created_by_id=estimate_with_details.created_by_id,
-            line_items=[
-                EstimateLineItemResponse(
-                    id=item.id,
-                    parent_line_item_id=item.parent_line_item_id,
-                    cost_code_id=item.cost_code_id,
-                    description=item.description,
-                    quantity=item.quantity,
-                    unit_of_measure=item.unit_of_measure,
-                    unit_cost_total=item.unit_cost_total,
-                    total_cost=item.total_cost,
-                    wbs_code=item.wbs_code,
-                )
-                for item in estimate_with_details.line_items
-            ],
-            assumptions=[a.assumption_text for a in estimate_with_details.assumptions],
-            exclusions=[e.exclusion_text for e in estimate_with_details.exclusions],
-            risk_factors=[
-                {
-                    "factor_name": rf.factor_name,
-                    "distribution": rf.distribution,
-                    "param_min": rf.param_min,
-                    "param_likely": rf.param_likely,
-                    "param_max": rf.param_max,
-                }
-                for rf in estimate_with_details.risk_factors
-            ],
-        )
-
-    except Exception as exc:
-        # Log failure and raise
-        audit_repo.create(
-            db,
-            {
-                "project_id": request.project_id,
-                "user_id": current_user.id,
-                "action": "estimate_generation_failed",
-                "details": {"error": str(exc)},
-            },
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Estimate generation failed: {str(exc)}",
-        )
+    return JobStatusResponse(
+        id=job.id,
+        job_type=job.job_type,
+        status=job.status,
+        progress_percent=job.progress_percent,
+        current_step="Job queued",
+        result_data=None,
+        error_message=None,
+        created_at=job.created_at,
+        started_at=None,
+        completed_at=None,
+    )
 
 
 @router.get("/{estimate_id}", response_model=EstimateDetailResponse)

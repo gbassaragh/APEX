@@ -123,6 +123,13 @@ def get_estimate_repo():
     return EstimateRepository()
 
 
+def get_job_repo():
+    """Get JobRepository instance."""
+    from apex.database.repositories.job_repository import JobRepository
+
+    return JobRepository()
+
+
 def get_audit_repo():
     """Get AuditRepository instance."""
     from apex.database.repositories.audit_repository import AuditRepository

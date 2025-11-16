@@ -21,6 +21,7 @@ MUST check ProjectAccess before allowing estimate generation.
 13. Persist via repository (single transaction)
 14. Create AuditLog entry
 """
+import asyncio
 import logging
 from datetime import datetime
 from decimal import Decimal
@@ -171,7 +172,7 @@ class EstimateGenerator:
         start_time = datetime.utcnow()
 
         # STEP 1: Load project & documents
-        project = self.project_repo.get_by_id(db, project_id)
+        project = self.project_repo.get(db, project_id)
         if not project:
             raise BusinessRuleViolation(
                 message=f"Project not found: {project_id}", code="PROJECT_NOT_FOUND"
@@ -229,11 +230,9 @@ class EstimateGenerator:
         risk_factors = self._build_risk_factors(risk_factors_dto)
 
         # STEP 7: Run Monte Carlo analysis
-        # TODO (HIGH PRIORITY): Monte Carlo is CPU-bound and blocks event loop.
-        # Production should use:
-        #   risk_results = await asyncio.to_thread(self.risk_analyzer.run_analysis, ...)
-        # This requires testing to ensure thread safety of NumPy/SciPy operations.
-        risk_results = self.risk_analyzer.run_analysis(
+        self.risk_analyzer.iterations = monte_carlo_iterations
+        risk_results = await asyncio.to_thread(
+            self.risk_analyzer.run_analysis,
             base_cost=float(base_cost),
             risk_factors=risk_factors,
             correlation_matrix=None,  # MVP: no correlation (production would extract from DTO)

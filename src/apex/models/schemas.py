@@ -254,6 +254,7 @@ class RiskFactorInput(BaseModel):
 class EstimateGenerateRequest(BaseModel):
     """Request schema for estimate generation."""
 
+    project_id: UUID
     risk_factors: List[RiskFactorInput] = Field(default_factory=list)
     confidence_level: float = Field(default=0.80, ge=0.0, le=1.0)
     monte_carlo_iterations: int = Field(default=10000, ge=1000, le=100000)
@@ -354,3 +355,18 @@ class AuditLogResponse(BaseModel):
     tokens_used: Optional[int] = None
 
     model_config = {"from_attributes": True}
+
+
+class JobStatusResponse(BaseModel):
+    """Background job status response."""
+
+    id: UUID
+    job_type: str
+    status: str  # "pending", "running", "completed", "failed"
+    progress_percent: int
+    current_step: Optional[str] = None
+    result_data: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
