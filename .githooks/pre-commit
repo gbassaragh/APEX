@@ -1,0 +1,81 @@
+#!/bin/bash
+# Pre-commit hook for APEX project
+# Runs all code validation checks on staged files before allowing commit
+# To install: cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+echo "🔍 Running pre-commit validation checks..."
+echo ""
+
+# Activate virtual environment if it exists
+if [ -d "venv/bin" ]; then
+    source venv/bin/activate
+elif [ -d ".venv/bin" ]; then
+    source .venv/bin/activate
+else
+    echo "⚠️  Warning: No virtual environment found (venv or .venv)"
+    echo ""
+fi
+
+# Get list of staged Python files (only if they exist in src/ or tests/)
+STAGED_PY_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E "^(src|tests)/.*\.py$" || true)
+
+# If no Python files in src/ or tests/ are staged, skip checks
+if [ -z "$STAGED_PY_FILES" ]; then
+    echo "ℹ️  No Python files in src/ or tests/ are staged for commit."
+    echo "   Skipping validation checks."
+    echo ""
+    exit 0
+fi
+
+echo "📝 Staged Python files to validate:"
+echo "$STAGED_PY_FILES" | sed 's/^/   - /'
+echo ""
+
+# Track overall success
+VALIDATION_FAILED=0
+
+# Function to run check and track failures
+run_check() {
+    local name=$1
+    local command=$2
+
+    echo "Running $name..."
+    if eval "$command" > /tmp/pre-commit-${name}.log 2>&1; then
+        echo "✅ $name passed"
+    else
+        echo "❌ $name failed"
+        echo ""
+        cat /tmp/pre-commit-${name}.log
+        echo ""
+        VALIDATION_FAILED=1
+    fi
+}
+
+# Run all validation checks on src/ and tests/ directories
+run_check "black" "black src/ tests/ --check --line-length 100"
+run_check "flake8" "flake8 src/ tests/"
+run_check "isort" "isort src/ tests/ --check-only --profile black"
+run_check "ruff" "ruff check src/ tests/"
+run_check "bandit" "bandit -r src/ -ll -f txt -q"
+
+echo ""
+
+# Check result
+if [ $VALIDATION_FAILED -eq 1 ]; then
+    echo "💥 Pre-commit validation FAILED"
+    echo ""
+    echo "To fix formatting issues automatically, run:"
+    echo "  black src/ tests/ --line-length 100"
+    echo "  isort src/ tests/ --profile black"
+    echo ""
+    echo "To skip validation (not recommended), use:"
+    echo "  git commit --no-verify"
+    echo ""
+    exit 1
+else
+    echo "✨ All validation checks passed! Proceeding with commit..."
+    echo ""
+    exit 0
+fi
