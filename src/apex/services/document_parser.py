@@ -321,7 +321,10 @@ class DocumentParser:
             except asyncio.TimeoutError:
                 # SDK raises asyncio.TimeoutError on timeout
                 timeout = config.AZURE_DI_TIMEOUT
-                msg = f"Azure Document Intelligence analysis exceeded {timeout}s timeout for {filename}"
+                msg = (
+                    f"Azure Document Intelligence analysis exceeded "
+                    f"{timeout}s timeout for {filename}"
+                )
                 raise TimeoutError(msg)
 
             # Extract structured content

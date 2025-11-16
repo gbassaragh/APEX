@@ -241,11 +241,9 @@ class EstimateGenerator:
         )
 
         pct = int(confidence_level * 100)
-        p50 = risk_results['percentiles']['p50']
-        target = risk_results['percentiles'][f'p{pct}']
-        logger.info(
-            f"Monte Carlo analysis complete: P50=${p50:,.2f}, P{pct}=${target:,.2f}"
-        )
+        p50 = risk_results["percentiles"]["p50"]
+        target = risk_results["percentiles"][f"p{pct}"]
+        logger.info(f"Monte Carlo analysis complete: P50=${p50:,.2f}, P{pct}=${target:,.2f}")
 
         # STEP 8: Compute contingency percentage
         target_cost = Decimal(str(risk_results["percentiles"][f"p{int(confidence_level * 100)}"]))

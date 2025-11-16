@@ -137,9 +137,7 @@ def validate_assumptions_list(assumptions: List[str]) -> List[str]:
         cleaned.append(cleaned_text)
 
     removed = len(assumptions) - len(cleaned)
-    logger.info(
-        f"Assumptions validated: {len(assumptions)} → {len(cleaned)} (removed {removed})"
-    )
+    logger.info(f"Assumptions validated: {len(assumptions)} → {len(cleaned)} (removed {removed})")
     return cleaned
 
 
@@ -197,9 +195,7 @@ def validate_exclusions_list(exclusions: List[str]) -> List[str]:
         cleaned.append(cleaned_text)
 
     removed = len(exclusions) - len(cleaned)
-    logger.info(
-        f"Exclusions validated: {len(exclusions)} → {len(cleaned)} (removed {removed})"
-    )
+    logger.info(f"Exclusions validated: {len(exclusions)} → {len(cleaned)} (removed {removed})")
     return cleaned
 
 

@@ -344,9 +344,11 @@ class MonteCarloRiskAnalyzer:
 
         # Validate correlation matrix
         if correlation_matrix.shape != (n_vars, n_vars):
-            raise ValueError(
-                f"Correlation matrix shape {correlation_matrix.shape} doesn't match variables {n_vars}"
+            msg = (
+                f"Correlation matrix shape {correlation_matrix.shape} "
+                f"doesn't match variables {n_vars}"
             )
+            raise ValueError(msg)
 
         # 1. Rank-transform original samples
         ranked = np.apply_along_axis(rankdata, 0, samples)
