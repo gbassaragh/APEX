@@ -7,6 +7,20 @@ Provides:
 - Mock Azure services
 - Test user/project/document fixtures
 """
+import os
+
+# CRITICAL: Set test environment variables BEFORE any apex modules are imported
+# This prevents Config validation errors during test collection
+os.environ["TESTING"] = "true"  # Signal test mode to connection.py
+os.environ.setdefault("AZURE_SQL_SERVER", "test-server.database.windows.net")
+os.environ.setdefault("AZURE_SQL_DATABASE", "test-db")
+os.environ.setdefault("AZURE_OPENAI_ENDPOINT", "https://test-openai.openai.azure.com/")
+os.environ.setdefault("AZURE_OPENAI_DEPLOYMENT", "test-gpt4")
+os.environ.setdefault("AZURE_DI_ENDPOINT", "https://test-di.cognitiveservices.azure.com/")
+os.environ.setdefault("AZURE_STORAGE_ACCOUNT", "teststorageaccount")
+os.environ.setdefault("AZURE_AD_TENANT_ID", "00000000-0000-0000-0000-000000000000")
+os.environ.setdefault("AZURE_AD_CLIENT_ID", "00000000-0000-0000-0000-000000000000")
+
 import asyncio
 from typing import AsyncGenerator, Generator
 from uuid import uuid4

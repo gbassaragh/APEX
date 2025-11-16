@@ -8,3 +8,6 @@ exclude =
     .git
 # E203: whitespace before ':' (conflicts with black's slice formatting)
 extend-ignore = E203
+# E402: conftest.py needs to set env vars before imports
+per-file-ignores =
+    tests/conftest.py:E402

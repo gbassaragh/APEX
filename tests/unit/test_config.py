@@ -12,8 +12,22 @@ from apex.config import Config
 class TestConfigValidation:
     """Test configuration validation."""
 
-    def test_config_requires_mandatory_fields(self):
+    def test_config_requires_mandatory_fields(self, monkeypatch):
         """Test Config raises validation error for missing required fields."""
+        # Clear all environment variables that would satisfy Config
+        required_vars = [
+            "AZURE_SQL_SERVER",
+            "AZURE_SQL_DATABASE",
+            "AZURE_OPENAI_ENDPOINT",
+            "AZURE_OPENAI_DEPLOYMENT",
+            "AZURE_DI_ENDPOINT",
+            "AZURE_STORAGE_ACCOUNT",
+            "AZURE_AD_TENANT_ID",
+            "AZURE_AD_CLIENT_ID",
+        ]
+        for var in required_vars:
+            monkeypatch.delenv(var, raising=False)
+
         with pytest.raises(ValidationError) as exc_info:
             Config(
                 _env_file=None,  # Prevent loading from .env

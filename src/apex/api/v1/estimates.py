@@ -297,7 +297,7 @@ def list_project_estimates(
 @router.get("/{estimate_id}/export")
 def export_estimate(
     estimate_id: UUID,
-    format: str = Query("json", regex="^(json|csv|pdf)$", description="Export format"),
+    format: str = Query("json", pattern="^(json|csv|pdf)$", description="Export format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     project_repo: ProjectRepository = Depends(get_project_repo),

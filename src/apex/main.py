@@ -5,6 +5,7 @@ Enterprise estimation platform for utility T&D projects.
 """
 import logging
 import traceback
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI, Request
@@ -22,6 +23,21 @@ from apex.utils.middleware import RequestIDMiddleware
 setup_logging()
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler for startup and shutdown events."""
+    # Startup
+    logger.info(f"Starting {config.APP_NAME} v{config.APP_VERSION}")
+    logger.info(f"Environment: {config.ENVIRONMENT}")
+    logger.info(f"Debug mode: {config.DEBUG}")
+
+    yield
+
+    # Shutdown
+    logger.info(f"Shutting down {config.APP_NAME}")
+
+
 # Create FastAPI application
 app = FastAPI(
     title=config.APP_NAME,
@@ -29,6 +45,7 @@ app = FastAPI(
     description="AI-Powered Estimation Expert for utility T&D projects",
     docs_url="/docs" if config.DEBUG else None,  # Disable docs in production
     redoc_url="/redoc" if config.DEBUG else None,
+    lifespan=lifespan,
 )
 
 # Add middleware
@@ -98,20 +115,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include API router
 app.include_router(api_router, prefix=config.API_V1_PREFIX)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Application startup handler."""
-    logger.info(f"Starting {config.APP_NAME} v{config.APP_VERSION}")
-    logger.info(f"Environment: {config.ENVIRONMENT}")
-    logger.info(f"Debug mode: {config.DEBUG}")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown handler."""
-    logger.info(f"Shutting down {config.APP_NAME}")
 
 
 # Root endpoint

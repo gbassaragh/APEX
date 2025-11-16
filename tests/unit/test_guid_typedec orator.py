@@ -97,11 +97,14 @@ class TestGUIDTypeDecorator:
 
     def test_guid_null_handling(self, sqlite_engine):
         """Test GUID handles None values correctly."""
-        # Create model without required ID should fail
-        with Session(sqlite_engine):
+        # Create model without explicit ID - default should be applied on insert
+        with Session(sqlite_engine) as session:
             test_obj = TestModel(name="test5")
-            # Default should provide UUID
+            session.add(test_obj)
+            session.flush()  # Trigger default generation
+            # After flush, default should provide UUID
             assert test_obj.id is not None
+            assert isinstance(test_obj.id, uuid.UUID)
 
     def test_guid_persistence_and_retrieval(self, sqlite_engine):
         """Test GUID survives round-trip to database."""
@@ -191,8 +194,10 @@ class TestGUIDDialectSpecific:
         guid_type = GUID()
         impl = guid_type.load_dialect_impl(dialect)
 
-        # Should be UNIQUEIDENTIFIER for mssql
-        assert impl.__class__.__name__ == "UNIQUEIDENTIFIER"
+        # Should be UNIQUEIDENTIFIER type for mssql (SQLAlchemy 2.0 renamed to MSUUid)
+        assert impl.__class__.__name__ in ("UNIQUEIDENTIFIER", "MSUUid")
+        # Verify it's from the mssql dialect
+        assert "mssql" in impl.__class__.__module__
 
     def test_guid_postgresql_dialect(self):
         """Test GUID uses UUID for PostgreSQL."""
@@ -202,8 +207,10 @@ class TestGUIDDialectSpecific:
         guid_type = GUID()
         impl = guid_type.load_dialect_impl(dialect)
 
-        # Should be UUID for postgresql
-        assert impl.__class__.__name__ == "UUID"
+        # Should be UUID type for postgresql (SQLAlchemy 2.0 renamed to PGUuid)
+        assert impl.__class__.__name__ in ("UUID", "PGUuid")
+        # Verify it's from the postgresql dialect
+        assert "postgresql" in impl.__class__.__module__
 
     def test_guid_cache_ok(self):
         """Test GUID type is cache-safe."""
