@@ -154,7 +154,7 @@ class Project(Base):
     status = Column(SAEnum(ProjectStatus), default=ProjectStatus.DRAFT, nullable=False)
 
     # Audit fields
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     created_by_id = Column(GUID, ForeignKey("users.id"), nullable=False)
 
     # Relationships
@@ -189,7 +189,7 @@ class Document(Base):
     validation_result = Column(JSON)
 
     # Audit fields
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     created_by_id = Column(GUID, ForeignKey("users.id"), nullable=False)
 
     # Relationships
@@ -227,9 +227,11 @@ class BackgroundJob(Base):
     error_message = Column(Text)
 
     # Audit
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime)
+    created_at = Column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True
+    )
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
     created_by_id = Column(GUID, ForeignKey("users.id"), nullable=False)
 
     # Relationships
@@ -276,7 +278,7 @@ class Estimate(Base):
     llm_model_version = Column(String(50))
 
     # Audit fields
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     created_by_id = Column(GUID, ForeignKey("users.id"), nullable=False)
 
     # Relationships
@@ -447,7 +449,7 @@ class AuditLog(Base):
 
     action = Column(String(100), nullable=False)  # "created", "validated", "estimated", etc.
     details = Column(JSON)  # Arbitrary audit data (non-analytical)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
     # LLM usage tracking
     llm_model_version = Column(String(50))

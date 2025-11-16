@@ -1,7 +1,7 @@
 """
 Health check endpoints for monitoring and readiness probes.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Response
 from fastapi import status as http_status
@@ -25,7 +25,7 @@ async def liveness_check():
     """
     return {
         "status": "alive",
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(timezone.utc),
         "application": config.APP_NAME,
         "version": config.APP_VERSION,
     }
@@ -87,7 +87,7 @@ async def readiness_check(response: Response, db: Session = Depends(get_db)):
         "status": "ready" if all_healthy else "degraded",
         "checks": checks,
         "issues": issues if issues else None,
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(timezone.utc),
         "application": config.APP_NAME,
         "version": config.APP_VERSION,
     }

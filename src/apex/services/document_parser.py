@@ -7,7 +7,7 @@ Dead letter queue for failed documents.
 """
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -76,7 +76,7 @@ class CircuitBreaker:
         """Record failed operation, potentially open circuit."""
         async with self._lock:
             self.failure_count += 1
-            self.last_failure_time = datetime.utcnow()
+            self.last_failure_time = datetime.now(timezone.utc)
 
             # Transition HALF_OPEN → OPEN on probe failure
             if self.state == CircuitState.HALF_OPEN:
@@ -110,7 +110,7 @@ class CircuitBreaker:
             if self.state == CircuitState.OPEN:
                 # Check if timeout has elapsed
                 if self.last_failure_time:
-                    elapsed = (datetime.utcnow() - self.last_failure_time).total_seconds()
+                    elapsed = (datetime.now(timezone.utc) - self.last_failure_time).total_seconds()
                     if elapsed >= self.timeout_seconds:
                         logger.info(
                             f"Circuit breaker: Timeout elapsed ({elapsed:.1f}s), entering HALF_OPEN"
@@ -120,7 +120,7 @@ class CircuitBreaker:
                         return True
 
                 # Still in timeout period
-                elapsed = (datetime.utcnow() - self.last_failure_time).total_seconds()
+                elapsed = (datetime.now(timezone.utc) - self.last_failure_time).total_seconds()
                 remaining = self.timeout_seconds - elapsed
                 raise BusinessRuleViolation(
                     message=(
@@ -560,7 +560,7 @@ class DocumentParser:
             error_details = {
                 "error_type": exception.__class__.__name__,
                 "error_message": str(exception),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "filename": filename,
                 "operation": "document_parsing",
             }
