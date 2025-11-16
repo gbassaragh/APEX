@@ -88,6 +88,9 @@ async def global_exception_handler(request: Request, exc: Exception):
     """
     Handle all unhandled exceptions with standardized error response.
 
+    NOTE: HTTPException is re-raised to be handled by FastAPI's built-in handler.
+    This preserves correct HTTP status codes (503, 404, etc.).
+
     Args:
         request: FastAPI request
         exc: Exception
@@ -95,6 +98,12 @@ async def global_exception_handler(request: Request, exc: Exception):
     Returns:
         JSON response with error details (500)
     """
+    # Re-raise HTTPException to let FastAPI handle it with correct status code
+    from fastapi import HTTPException
+
+    if isinstance(exc, HTTPException):
+        raise
+
     request_id = getattr(request.state, "request_id", None)
     logger.error("Unhandled exception: %s", traceback.format_exc())
 

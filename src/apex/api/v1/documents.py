@@ -309,7 +309,7 @@ async def validate_document(
         except BusinessRuleViolation as circuit_error:
             # Circuit breaker open - service temporarily unavailable
             if circuit_error.code == "CIRCUIT_BREAKER_OPEN":
-                msg = f"Document parsing service temporarily unavailable: {circuit_error.message}"
+                msg = f"Document parsing service temporarily unavailable: {str(circuit_error)}"
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail=msg,
@@ -317,12 +317,12 @@ async def validate_document(
             elif circuit_error.code == "UNSUPPORTED_FORMAT":
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=circuit_error.message,
+                    detail=str(circuit_error),
                 )
             else:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Document parsing failed: {circuit_error.message}",
+                    detail=f"Document parsing failed: {str(circuit_error)}",
                 )
 
         except TimeoutError as timeout_error:
@@ -335,6 +335,7 @@ async def validate_document(
                 completeness_score=0,
                 validation_status=ValidationStatus.FAILED,
             )
+            db.commit()  # Commit error state before raising exception
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Document parsing timeout: {str(timeout_error)}",
@@ -395,9 +396,9 @@ async def validate_document(
             validation_status = ValidationStatus.MANUAL_REVIEW
             validation_result = {
                 "parsed_content": structured_content,
-                "llm_error": llm_error.message,
+                "llm_error": str(llm_error),
                 "aace_class_used": aace_class.value,
-                "issues": [f"LLM validation failed: {llm_error.message}"],
+                "issues": [f"LLM validation failed: {str(llm_error)}"],
                 "recommendations": ["Manual review required due to LLM validation failure"],
             }
             completeness_score = None
@@ -450,8 +451,11 @@ async def validate_document(
             suitable_for_estimation=suitable_for_estimation,
         )
 
+    except HTTPException:
+        # Re-raise HTTP exceptions (from inner error handlers)
+        raise
     except Exception as exc:
-        # Update document to FAILED status
+        # Only catch non-HTTP exceptions - update document to FAILED status
         document_repo.update_validation_result(
             db=db,
             document_id=document_id,

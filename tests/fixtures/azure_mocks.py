@@ -46,6 +46,16 @@ class MockBlobStorageClient:
         self._upload_count += 1
         return key
 
+    async def upload_document(
+        self,
+        container: str,
+        blob_name: str,
+        data: bytes,
+        content_type: Optional[str] = None,
+    ) -> str:
+        """Upload document (alias for upload_blob)."""
+        return await self.upload_blob(container, blob_name, data, content_type)
+
     async def download_blob(self, container: str, blob_name: str) -> bytes:
         """Download blob from mock storage."""
         key = f"{container}/{blob_name}"
@@ -54,6 +64,10 @@ class MockBlobStorageClient:
         self._download_count += 1
         return self._blobs[key]
 
+    async def download_document(self, container: str, blob_name: str) -> bytes:
+        """Download document (alias for download_blob)."""
+        return await self.download_blob(container, blob_name)
+
     async def delete_blob(self, container: str, blob_name: str) -> None:
         """Delete blob from mock storage."""
         key = f"{container}/{blob_name}"
@@ -61,6 +75,10 @@ class MockBlobStorageClient:
             del self._blobs[key]
             del self._metadata[key]
         self._delete_count += 1
+
+    async def delete_document(self, container: str, blob_name: str) -> None:
+        """Delete document (alias for delete_blob)."""
+        await self.delete_blob(container, blob_name)
 
     async def move_to_dead_letter_queue(
         self,

@@ -36,6 +36,7 @@ from apex.dependencies import (
     get_db,
     get_document_parser,
     get_llm_orchestrator,
+    security,
 )
 from apex.main import app
 from apex.models.database import AppRole, Base, Document, Project, ProjectAccess, User
@@ -152,6 +153,10 @@ async def client(
     def override_get_current_user():
         return test_user
 
+    def override_security():
+        # Return None - get_current_user will be overridden anyway
+        return None
+
     def override_get_blob_storage():
         return mock_blob_storage
 
@@ -164,9 +169,28 @@ async def client(
     # Override dependencies
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[security] = override_security
     app.dependency_overrides[get_blob_storage] = override_get_blob_storage
     app.dependency_overrides[get_document_parser] = override_get_document_parser
     app.dependency_overrides[get_llm_orchestrator] = override_get_llm_orchestrator
+
+    # Pre-populate mock blob storage with test document content
+    # This ensures validation tests can download documents
+    from apex.config import config
+
+    test_pdf = b"%PDF-1.4\n%Test document content\n%%EOF"
+    # Upload test documents for various test scenarios
+    test_blob_paths = [
+        "uploads/test-project/test_scope.pdf",  # test_document fixture
+        "uploads/test_bid.pdf",  # bid document test
+    ]
+    for blob_path in test_blob_paths:
+        await mock_blob_storage.upload_document(
+            container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
+            blob_name=blob_path,
+            data=test_pdf,
+            content_type="application/pdf",
+        )
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True
@@ -212,14 +236,15 @@ def test_project(db_session: Session, test_user: User) -> Project:
     db_session.add(project)
     db_session.flush()
 
-    # Get Estimator role (seeded by db_session fixture)
-    estimator_role = db_session.query(AppRole).filter_by(role_name="Estimator").first()
+    # Get Manager role (seeded by db_session fixture)
+    # Project creator should have Manager role
+    manager_role = db_session.query(AppRole).filter_by(role_name="Manager").first()
 
     # Grant user access to project
     access = ProjectAccess(
         user_id=test_user.id,
         project_id=project.id,
-        app_role_id=estimator_role.id,
+        app_role_id=manager_role.id,
     )
     db_session.add(access)
     db_session.commit()

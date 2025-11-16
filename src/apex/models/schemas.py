@@ -95,8 +95,12 @@ class ProjectBase(BaseModel):
 
     project_number: str
     project_name: str
-    voltage_level: Optional[int] = None
-    line_miles: Optional[float] = None
+    voltage_level: Optional[int] = Field(
+        None, gt=0, description="Voltage level in kV (must be positive)"
+    )
+    line_miles: Optional[float] = Field(
+        None, ge=0, description="Line length in miles (must be non-negative)"
+    )
     terrain_type: Optional[TerrainType] = None
 
 

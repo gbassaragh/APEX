@@ -168,7 +168,7 @@ def update_project(
 
     # Update project
     update_data = project_update.model_dump(exclude_unset=True)
-    updated_project = project_repo.update(db, project_id, update_data)
+    updated_project = project_repo.update(db, project, update_data)
 
     # Create audit log
     audit_repo.create(
@@ -193,10 +193,9 @@ def delete_project(
     audit_repo: AuditRepository = Depends(get_audit_repo),
 ):
     """
-    Delete project.
+    Delete project (soft delete - archives the project).
 
     Requires user to have Manager role on the project.
-    NOTE: This is a hard delete. Consider implementing soft delete for production.
     """
     # Check user has Manager role (not just access)
     if not project_repo.check_user_has_role(
@@ -215,22 +214,22 @@ def delete_project(
             detail=f"Project {project_id} not found",
         )
 
-    # Create audit log before deletion
+    # Soft delete - archive the project
+    project_repo.update(db, project, {"status": ProjectStatus.ARCHIVED})
+
+    # Create audit log
     audit_repo.create(
         db,
         {
             "project_id": project_id,
             "user_id": current_user.id,
-            "action": "project_deleted",
+            "action": "project_archived",
             "details": {
                 "project_number": project.project_number,
                 "project_name": project.project_name,
             },
         },
     )
-
-    # Delete project
-    project_repo.delete(db, project_id)
 
     return None
 
