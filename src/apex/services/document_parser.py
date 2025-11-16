@@ -448,22 +448,38 @@ class DocumentParser:
         Returns:
             Structured Excel data with sheets and cells
 
-        Note:
-            This is a placeholder. Production implementation should use openpyxl
-            to extract sheets, cells, and formulas.
         """
-        # TODO: Implement openpyxl parsing
-        # import openpyxl
-        # from io import BytesIO
-        # workbook = openpyxl.load_workbook(BytesIO(document_bytes))
+        from io import BytesIO
 
-        logger.warning(f"Excel parsing not yet implemented for {filename}")
+        import openpyxl
 
-        return {
+        workbook = openpyxl.load_workbook(BytesIO(document_bytes), data_only=True)
+
+        structured = {
             "filename": filename,
             "sheets": [],
-            "metadata": {"format": "excel", "status": "not_implemented"},
+            "metadata": {"format": "excel", "sheet_count": len(workbook.sheetnames)},
         }
+
+        for sheet in workbook.worksheets:
+            sheet_data = {
+                "name": sheet.title,
+                "row_count": sheet.max_row,
+                "column_count": sheet.max_column,
+                "rows": [],
+            }
+
+            for row in sheet.iter_rows(values_only=True):
+                sheet_data["rows"].append([cell for cell in row])
+
+            structured["sheets"].append(sheet_data)
+
+        logger.info(
+            f"Parsed Excel file: {filename} - {len(structured['sheets'])} sheets, "
+            f"{structured['sheets'][0]['row_count'] if structured['sheets'] else 0} rows"
+        )
+
+        return structured
 
     async def _parse_word(self, document_bytes: bytes, filename: str) -> Dict[str, Any]:
         """
@@ -476,23 +492,49 @@ class DocumentParser:
         Returns:
             Structured Word data with paragraphs and tables
 
-        Note:
-            This is a placeholder. Production implementation should use python-docx
-            to extract paragraphs, tables, and styles.
         """
-        # TODO: Implement python-docx parsing
-        # import docx
-        # from io import BytesIO
-        # document = docx.Document(BytesIO(document_bytes))
+        from io import BytesIO
 
-        logger.warning(f"Word parsing not yet implemented for {filename}")
+        import docx
 
-        return {
+        document = docx.Document(BytesIO(document_bytes))
+
+        structured = {
             "filename": filename,
             "paragraphs": [],
             "tables": [],
-            "metadata": {"format": "word", "status": "not_implemented"},
+            "metadata": {"format": "word"},
         }
+
+        # Extract paragraphs
+        for paragraph in document.paragraphs:
+            if paragraph.text.strip():
+                structured["paragraphs"].append(
+                    {
+                        "text": paragraph.text,
+                        "style": paragraph.style.name if paragraph.style else None,
+                    }
+                )
+
+        # Extract tables
+        for idx, table in enumerate(document.tables):
+            table_data = {
+                "table_number": idx + 1,
+                "row_count": len(table.rows),
+                "column_count": len(table.columns) if table.rows else 0,
+                "cells": [],
+            }
+            for row in table.rows:
+                row_data = [cell.text.strip() for cell in row.cells]
+                table_data["cells"].append(row_data)
+            structured["tables"].append(table_data)
+
+        logger.info(
+            f"Parsed Word file: {filename} - {len(structured['paragraphs'])} paragraphs, "
+            f"{len(structured['tables'])} tables"
+        )
+
+        return structured
 
     async def _handle_parsing_failure(
         self, blob_path: str, filename: str, exception: Exception

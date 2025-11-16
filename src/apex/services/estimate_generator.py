@@ -357,12 +357,12 @@ class EstimateGenerator:
         # STEP 14: Create audit log
         duration_seconds = (datetime.utcnow() - start_time).total_seconds()
 
-        audit_log = AuditLog(
-            project_id=project_id,
-            estimate_id=persisted_estimate.id,
-            user_id=user.id,
-            action="estimate_generated",
-            details={
+        audit_log_data = {
+            "project_id": project_id,
+            "estimate_id": persisted_estimate.id,
+            "user_id": user.id,
+            "action": "estimate_generated",
+            "details": {
                 "aace_class": aace_class.value,
                 "base_cost": float(base_cost),
                 "p50_cost": risk_results["percentiles"]["p50"],
@@ -372,11 +372,10 @@ class EstimateGenerator:
                 "line_item_count": len(line_items),
                 "duration_seconds": duration_seconds,
             },
-            llm_model_version=config.AZURE_OPENAI_DEPLOYMENT,
-            # tokens_used would be tracked from LLM calls (TODO: aggregate from orchestrator)
-        )
+            "llm_model_version": config.AZURE_OPENAI_DEPLOYMENT,
+        }
 
-        self.audit_repo.create(db, audit_log)
+        self.audit_repo.create(db, audit_log_data)
 
         logger.info(
             f"Estimate generation complete: {persisted_estimate.estimate_number} "
@@ -438,12 +437,12 @@ class EstimateGenerator:
         Returns:
             Dictionary of cost code ID -> CostCode entity
 
-        Note: MVP returns empty dict (cost_database.py uses hardcoded sample costs)
-              Production would query CostCode table
+        Note: Uses CostLookupService to build map; returns empty dict if none exist.
         """
-        # MVP: Empty map (cost lookups use hardcoded values)
-        # Production: db.query(CostCode).all() and build map
-        return {}
+        from apex.services.cost_lookup import CostLookupService
+
+        lookup = CostLookupService()
+        return lookup.get_all_codes(db)
 
     def _build_risk_factors(
         self,

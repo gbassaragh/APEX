@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from apex.models.database import CostCode, Document, EstimateLineItem, Project
 from apex.models.enums import TerrainType
+from apex.services.cost_lookup import CostLookupService
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class CostDatabaseService:
         Note: Database session is passed to methods, not stored in __init__.
         This follows the stateless service pattern for Azure Container Apps.
         """
-        pass
+        self.cost_lookup = CostLookupService()
 
     def compute_base_cost(
         self,
@@ -84,7 +85,7 @@ class CostDatabaseService:
         cost_items = self._map_to_cost_items(project, quantities, cost_code_map)
 
         # Look up unit costs
-        cost_items_with_units = self._lookup_unit_costs(cost_items)
+        cost_items_with_units = self._lookup_unit_costs(db, cost_items)
 
         # Apply project-specific adjustments
         adjusted_items = self._apply_adjustments(project, cost_items_with_units)
@@ -207,24 +208,26 @@ class CostDatabaseService:
 
         cost_items = []
 
-        # MVP: Simple mapping (production would use intelligent matching)
-        # Cost code examples: "10-100" = Tangent Structures, "10-200" = Dead-End Structures
-
         for key, qty_data in quantities.items():
-            # Simplified cost code lookup (production would query CostCode table)
             cost_code_id = None
 
-            # Try to find matching cost code from map (simplified for MVP)
             if "tangent" in key.lower():
-                cost_code_id = "10-100"  # Placeholder - would lookup in cost_code_map
+                cost_code_id = "26.01.01"
             elif "dead_end" in key.lower() or "dead-end" in key.lower():
-                cost_code_id = "10-200"
+                cost_code_id = "26.01.02"
             elif "conductor" in key.lower():
-                cost_code_id = "20-100"
+                cost_code_id = "26.02.01"
             elif "foundation" in key.lower():
-                cost_code_id = "10-300"
+                cost_code_id = "26.04.01"
             elif "clearing" in key.lower():
-                cost_code_id = "30-100"
+                cost_code_id = "26.05.01"
+
+            if cost_code_id and cost_code_id not in cost_code_map:
+                # Try to match more specific variant from available codes
+                for candidate in cost_code_map:
+                    if candidate.startswith(cost_code_id):
+                        cost_code_id = candidate
+                        break
 
             cost_items.append(
                 {
@@ -241,72 +244,27 @@ class CostDatabaseService:
         return cost_items
 
     def _lookup_unit_costs(
-        self,
-        cost_items: List[Dict[str, Any]],
+        self, db: Session, cost_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        Look up unit costs from cost database.
-
-        For MVP: Hardcoded sample costs
-        For Production: Query RSMeans database/API or internal cost database
-
-        Args:
-            cost_items: Cost items from mapping
-
-        Returns:
-            Cost items with unit costs added
+        Look up unit costs from cost database with deterministic fallbacks.
         """
         logger.info(f"Looking up unit costs for {len(cost_items)} items")
 
-        # MVP: Sample unit costs (production would query database)
-        sample_unit_costs = {
-            "10-100": {
-                "material": Decimal("15000"),
-                "labor": Decimal("8000"),
-                "other": Decimal("2000"),
-            },  # Tangent structure
-            "10-200": {
-                "material": Decimal("22000"),
-                "labor": Decimal("12000"),
-                "other": Decimal("3000"),
-            },  # Dead-end structure
-            "10-300": {
-                "material": Decimal("3000"),
-                "labor": Decimal("4000"),
-                "other": Decimal("500"),
-            },  # Foundation
-            "20-100": {
-                "material": Decimal("1.50"),
-                "labor": Decimal("0.75"),
-                "other": Decimal("0.25"),
-            },  # Conductor per LF
-            "30-100": {
-                "material": Decimal("500"),
-                "labor": Decimal("1000"),
-                "other": Decimal("200"),
-            },  # ROW clearing per acre
-        }
-
         for item in cost_items:
             cost_code_id = item.get("cost_code_id")
+            cost_code = (
+                self.cost_lookup.get_cost_by_code(db, cost_code_id) if cost_code_id else None
+            )
+            unit_cost = self.cost_lookup.get_unit_cost(db, cost_code) if cost_code else None
 
-            if cost_code_id and cost_code_id in sample_unit_costs:
-                unit_cost = sample_unit_costs[cost_code_id]
-                item["unit_cost_material"] = unit_cost["material"]
-                item["unit_cost_labor"] = unit_cost["labor"]
-                item["unit_cost_other"] = unit_cost["other"]
-                item["unit_cost_total"] = (
-                    unit_cost["material"] + unit_cost["labor"] + unit_cost["other"]
-                )
-            else:
-                # Fallback for unknown cost codes
-                logger.warning(
-                    f"No unit cost found for cost code {cost_code_id}, using placeholder"
-                )
-                item["unit_cost_material"] = Decimal("1000")
-                item["unit_cost_labor"] = Decimal("500")
-                item["unit_cost_other"] = Decimal("100")
-                item["unit_cost_total"] = Decimal("1600")
+            if unit_cost is None:
+                unit_cost = self.cost_lookup.fallback_unit_cost(item["description"])
+
+            item["unit_cost_material"] = unit_cost
+            item["unit_cost_labor"] = Decimal("0")
+            item["unit_cost_other"] = Decimal("0")
+            item["unit_cost_total"] = unit_cost
 
         logger.info("Unit cost lookup complete")
 

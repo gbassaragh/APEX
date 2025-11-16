@@ -3,6 +3,7 @@ Document upload, validation, and retrieval endpoints.
 
 Handles document upload to Azure Blob Storage and AI-powered validation.
 """
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from apex.azure.blob_storage import BlobStorageClient
@@ -242,12 +243,13 @@ async def upload_document(
 
 
 @router.post(
-    "/{document_id}/validate", response_model=JobStatusResponse, status_code=status.HTTP_202_ACCEPTED
+    "/{document_id}/validate",
+    response_model=JobStatusResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 @azure_retry
 async def validate_document(
     document_id: UUID,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     project_repo: ProjectRepository = Depends(get_project_repo),
@@ -281,7 +283,8 @@ async def validate_document(
         project_id=document.project_id,
     )
 
-    background_tasks.add_task(process_document_validation, job.id, document_id, current_user.id)
+    logger.info("Queued document validation job %s for document %s", job.id, document_id)
+    asyncio.create_task(process_document_validation(job.id, document_id, current_user.id))
 
     return JobStatusResponse(
         id=job.id,

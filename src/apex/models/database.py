@@ -206,8 +206,12 @@ class BackgroundJob(Base):
     __tablename__ = "background_jobs"
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
-    job_type = Column(String(50), nullable=False, index=True)  # "document_validation", "estimate_generation"
-    status = Column(String(20), nullable=False, index=True)  # "pending", "running", "completed", "failed"
+    job_type = Column(
+        String(50), nullable=False, index=True
+    )  # "document_validation", "estimate_generation"
+    status = Column(
+        String(20), nullable=False, index=True
+    )  # "pending", "running", "completed", "failed"
 
     # Related entity IDs
     document_id = Column(GUID, ForeignKey("documents.id"), nullable=True, index=True)
@@ -306,6 +310,10 @@ class CostCode(Base):
     description = Column(String(255), nullable=False)
     unit_of_measure = Column(String(20))  # "EA", "LF", etc.
     source_database = Column(String(50), default="RSMeans")
+    unit_cost_material = Column(Numeric(15, 2))
+    unit_cost_labor = Column(Numeric(15, 2))
+    unit_cost_other = Column(Numeric(15, 2))
+    unit_cost_total = Column(Numeric(15, 2))
 
 
 class EstimateLineItem(Base):

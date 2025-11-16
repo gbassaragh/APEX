@@ -1,0 +1,6 @@
+code,description,unit_of_measure,unit_cost_material,unit_cost_labor,unit_cost_other,unit_cost_total
+26.01.01,Transmission Tower - Tangent,EA,55000,15000,5000,75000
+26.01.02,Transmission Tower - Dead-End/Angle,EA,70000,20000,5000,95000
+26.02.01,ACSR Conductor 795 kcmil,LF,1.75,0.75,0.25,2.75
+26.04.01,Tower Foundation - Drilled Pier,EA,9000,4500,500,14000
+26.05.01,Right-of-Way Clearing,AC,6000,3500,500,10000

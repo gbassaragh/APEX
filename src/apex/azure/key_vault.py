@@ -1,50 +1,55 @@
 """
-Azure Key Vault client wrapper (optional).
+Azure Key Vault async client with Managed Identity authentication.
 
-CRITICAL: This is a synchronous client. For async operations, create async version.
+CRITICAL: This is an async client—always await methods. Intended for startup-time secret
+loading, not per-request calls.
 """
+import logging
 from typing import Optional
 
-from azure.keyvault.secrets import SecretClient
+from azure.keyvault.secrets.aio import SecretClient
 
-from apex.azure.auth import get_azure_credential_sync
-from apex.config import config
-from apex.utils.retry import azure_retry
+from apex.azure.auth import get_azure_credential
+
+logger = logging.getLogger(__name__)
 
 
 class KeyVaultClient:
     """
-    Synchronous wrapper for Azure Key Vault operations.
+    Async Azure Key Vault client.
 
-    Used for retrieving secrets if needed (e.g., third-party API keys).
-    Not required for Azure service authentication (uses Managed Identity).
-
-    Note: Uses synchronous credential getter since this class is not async.
-          For async operations, create KeyVaultClientAsync variant.
+    Best practice: fetch secrets at startup and cache them in process config/env.
     """
 
     def __init__(self):
-        """Initialize Key Vault client with Managed Identity."""
-        if not config.AZURE_KEY_VAULT_URL:
-            raise ValueError("AZURE_KEY_VAULT_URL not configured")
+        self._client: Optional[SecretClient] = None
+        self._vault_url: Optional[str] = None
 
-        # Use sync credential getter (not async)
-        credential = get_azure_credential_sync()
-        self.client = SecretClient(vault_url=config.AZURE_KEY_VAULT_URL, credential=credential)
+    async def _get_client(self, vault_url: str) -> SecretClient:
+        """Get or create an async SecretClient instance."""
+        if self._client is None or self._vault_url != vault_url:
+            credential = await get_azure_credential()
+            self._client = SecretClient(vault_url=vault_url, credential=credential)
+            self._vault_url = vault_url
+            logger.info("Initialized async KeyVault client for %s", vault_url)
 
-    @azure_retry
-    def get_secret(self, secret_name: str) -> Optional[str]:
-        """
-        Retrieve secret from Key Vault.
+        return self._client
 
-        Args:
-            secret_name: Name of the secret
+    async def get_secret(self, vault_url: str, secret_name: str) -> str:
+        """Retrieve a secret value."""
+        client = await self._get_client(vault_url)
+        secret = await client.get_secret(secret_name)
+        logger.debug("Retrieved secret: %s", secret_name)
+        return secret.value
 
-        Returns:
-            Secret value or None if not found
-        """
-        try:
-            secret = self.client.get_secret(secret_name)
-            return secret.value
-        except Exception:
-            return None
+    async def set_secret(self, vault_url: str, secret_name: str, value: str) -> None:
+        """Set a secret value."""
+        client = await self._get_client(vault_url)
+        await client.set_secret(secret_name, value)
+        logger.info("Set secret: %s", secret_name)
+
+    async def close(self) -> None:
+        """Close underlying client."""
+        if self._client is not None:
+            await self._client.close()
+            logger.info("Closed KeyVault client")

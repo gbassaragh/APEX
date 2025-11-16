@@ -1,6 +1,4 @@
-import asyncio
 import threading
-from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -40,7 +38,9 @@ async def test_monte_carlo_runs_in_thread(db_session, test_project, test_user):
             self.random_seed = random_seed
             self.thread_seen = None
 
-        def run_analysis(self, base_cost, risk_factors, correlation_matrix=None, confidence_levels=None):
+        def run_analysis(
+            self, base_cost, risk_factors, correlation_matrix=None, confidence_levels=None
+        ):
             self.thread_seen = threading.current_thread().name
             return {
                 "base_cost": base_cost,

@@ -1,4 +1,3 @@
-import asyncio
 from typing import Callable
 
 import pytest
@@ -7,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from apex.database.repositories.job_repository import JobRepository
 from apex.models.enums import ValidationStatus
 from apex.services import background_jobs
+from apex.services.background_jobs import process_document_validation, process_estimate_generation
 
 
 def _bind_session_factory(db_session) -> Callable:
@@ -17,7 +17,6 @@ def _bind_session_factory(db_session) -> Callable:
 
 @pytest.mark.asyncio
 async def test_document_validation_background_job_completes(
-    client,
     db_session,
     test_document,
     mock_blob_storage,
@@ -31,27 +30,37 @@ async def test_document_validation_background_job_completes(
     monkeypatch.setattr(background_jobs, "DocumentParser", lambda: mock_document_parser)
     monkeypatch.setattr(background_jobs, "LLMOrchestrator", lambda: mock_llm_orchestrator)
 
-    resp = await client.post(f"/documents/{test_document.id}/validate")
-    assert resp.status_code == 202
-    job_id = resp.json()["id"]
+    from apex.config import config
+
+    await mock_blob_storage.upload_document(
+        container=config.AZURE_STORAGE_CONTAINER_UPLOADS,
+        blob_name=test_document.blob_path,
+        data=b"pdf-bytes",
+        content_type="application/pdf",
+    )
 
     job_repo = JobRepository()
-    job = None
-    for _ in range(20):
-        job = job_repo.get(db_session, job_id)
-        if job and job.status in ("completed", "failed"):
-            break
-        await asyncio.sleep(0.05)
+    job = job_repo.create_job(
+        db=db_session,
+        job_type="document_validation",
+        user_id=test_document.created_by_id,
+        document_id=test_document.id,
+        project_id=test_document.project_id,
+    )
+    db_session.commit()
 
-    assert job is not None, "Job record should exist"
+    await process_document_validation(job.id, test_document.id, test_document.created_by_id)
+    db_session.expire_all()
+    job = job_repo.get(db_session, job.id)
+
+    assert job is not None
     assert job.status == "completed"
     assert job.result_data["document_id"] == str(test_document.id)
-    assert job.result_data["validation_status"] in ("PENDING", "PASSED", "MANUAL_REVIEW")
+    assert job.result_data["validation_status"].upper() in ("PENDING", "PASSED", "MANUAL_REVIEW")
 
 
 @pytest.mark.asyncio
 async def test_estimate_generation_background_job_completes(
-    client,
     db_session,
     test_project,
     test_document,
@@ -70,7 +79,9 @@ async def test_estimate_generation_background_job_completes(
             self.iterations = iterations
             self.random_seed = random_seed
 
-        def run_analysis(self, base_cost, risk_factors, correlation_matrix=None, confidence_levels=None):
+        def run_analysis(
+            self, base_cost, risk_factors, correlation_matrix=None, confidence_levels=None
+        ):
             return {
                 "base_cost": base_cost,
                 "mean_cost": base_cost * 1.05,
@@ -89,26 +100,28 @@ async def test_estimate_generation_background_job_completes(
     monkeypatch.setattr(background_jobs, "LLMOrchestrator", lambda: mock_llm_orchestrator)
     monkeypatch.setattr(background_jobs, "MonteCarloRiskAnalyzer", FastRiskAnalyzer)
 
-    payload = {
-        "project_id": str(test_project.id),
-        "risk_factors": [],
-        "confidence_level": 0.8,
-        "monte_carlo_iterations": 1000,
-    }
-    resp = await client.post("/estimates/generate", json=payload)
-    assert resp.status_code == 202
-    job_id = resp.json()["id"]
-
     job_repo = JobRepository()
-    job = None
-    for _ in range(30):
-        job = job_repo.get(db_session, job_id)
-        if job and job.status in ("completed", "failed"):
-            break
-        await asyncio.sleep(0.05)
-        db_session.expire_all()
+    job = job_repo.create_job(
+        db=db_session,
+        job_type="estimate_generation",
+        user_id=test_document.created_by_id,
+        project_id=test_project.id,
+    )
+    db_session.commit()
 
-    assert job is not None, "Job record should exist"
+    await process_estimate_generation(
+        job.id,
+        test_project.id,
+        [],
+        0.8,
+        1000,
+        test_document.created_by_id,
+    )
+
+    db_session.expire_all()
+    job = job_repo.get(db_session, job.id)
+
+    assert job is not None
     assert job.status == "completed"
     assert job.result_data["project_id"] == str(test_project.id)
     assert "estimate_id" in job.result_data

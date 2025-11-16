@@ -4,7 +4,6 @@ Background job workers for long-running operations.
 Uses FastAPI BackgroundTasks to run operations asynchronously without blocking the main
 event loop for expensive document validation and estimate generation.
 """
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, List
@@ -240,7 +239,9 @@ async def process_estimate_generation(
             cost_db_service=cost_db_service,
         )
 
-        job_repo.update_progress(db, job_id, progress_percent=10, current_step="Preparing estimate job")
+        job_repo.update_progress(
+            db, job_id, progress_percent=10, current_step="Preparing estimate job"
+        )
         db.commit()
 
         project = project_repo.get(db, project_id)
@@ -255,7 +256,9 @@ async def process_estimate_generation(
             db.commit()
             return
 
-        job_repo.update_progress(db, job_id, progress_percent=25, current_step="Running estimate generator")
+        job_repo.update_progress(
+            db, job_id, progress_percent=25, current_step="Running estimate generator"
+        )
         db.commit()
 
         estimate = await estimate_generator.generate_estimate(
@@ -267,10 +270,11 @@ async def process_estimate_generation(
             user=user,
         )
 
-        job_repo.update_progress(db, job_id, progress_percent=90, current_step="Loading estimate details")
+        job_repo.update_progress(
+            db, job_id, progress_percent=90, current_step="Loading estimate details"
+        )
         db.commit()
 
-        estimate_with_details = estimate_repo.get_estimate_with_details(db, estimate.id)
         job_repo.mark_completed(
             db,
             job_id,
