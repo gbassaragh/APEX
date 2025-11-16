@@ -117,19 +117,19 @@ def get_project(
 
     Requires user to have access to the project.
     """
-    # Check user access
-    if not project_repo.check_user_access(db, current_user.id, project_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"User does not have access to project {project_id}",
-        )
-
     # Get project
     project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
+        )
+
+    # Check user access
+    if not project_repo.check_user_access(db, current_user.id, project_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User does not have access to project {project_id}",
         )
 
     return project
