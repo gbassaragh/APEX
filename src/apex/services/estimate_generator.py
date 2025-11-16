@@ -36,7 +36,6 @@ from apex.database.repositories.document_repository import DocumentRepository
 from apex.database.repositories.estimate_repository import EstimateRepository
 from apex.database.repositories.project_repository import ProjectRepository
 from apex.models.database import (
-    AuditLog,
     CostCode,
     Document,
     Estimate,

@@ -1,6 +1,7 @@
 """
 Configuration module using pydantic-settings for environment-based configuration.
 """
+import asyncio
 from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -171,3 +172,31 @@ class Config(BaseSettings):
 
 # Global config instance
 config = Config()
+
+
+async def load_secrets_from_keyvault() -> dict:
+    """
+    Load secrets from Azure Key Vault at startup (async).
+
+    Returns:
+        Dict of secret_name -> value
+    """
+    if not config.AZURE_KEY_VAULT_URL:
+        return {}
+
+    from apex.azure.key_vault import KeyVaultClient
+
+    kv_client = KeyVaultClient()
+    secret_names = []
+    secrets: dict = {}
+
+    if not secret_names:
+        return secrets
+
+    results = await asyncio.gather(
+        *[kv_client.get_secret(config.AZURE_KEY_VAULT_URL, name) for name in secret_names]
+    )
+    for name, value in zip(secret_names, results):
+        secrets[name] = value
+
+    return secrets

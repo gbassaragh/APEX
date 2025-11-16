@@ -32,6 +32,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {config.ENVIRONMENT}")
     logger.info(f"Debug mode: {config.DEBUG}")
 
+    # Load optional KeyVault secrets at startup (non-blocking if no vault configured)
+    from apex.config import load_secrets_from_keyvault
+
+    try:
+        secrets = await load_secrets_from_keyvault()
+        if secrets:
+            logger.info("Loaded %d secrets from KeyVault at startup", len(secrets))
+    except Exception as exc:
+        logger.warning("KeyVault startup load skipped/failed: %s", exc)
+
     yield
 
     # Shutdown
