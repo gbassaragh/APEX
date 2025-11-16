@@ -1,7 +1,7 @@
 """
 Repository for background job operations.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -52,11 +52,11 @@ class JobRepository(BaseRepository[BackgroundJob]):
         if not job:
             return None
 
-        job.progress_percent = progress_percent
-        job.current_step = current_step
-        if job.status == "pending":
-            job.status = "running"
-            job.started_at = datetime.utcnow()
+            job.progress_percent = progress_percent
+            job.current_step = current_step
+            if job.status == "pending":
+                job.status = "running"
+                job.started_at = datetime.now(timezone.utc)
 
         db.flush()
         return job
@@ -75,7 +75,7 @@ class JobRepository(BaseRepository[BackgroundJob]):
             return None
 
         job.status = "completed"
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
         job.result_data = result_data
         if estimate_id:
             job.estimate_id = estimate_id
@@ -91,14 +91,14 @@ class JobRepository(BaseRepository[BackgroundJob]):
 
         job.status = "failed"
         job.error_message = error_message
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
 
         db.flush()
         return job
 
     def cleanup_old_jobs(self, db: Session, *, older_than_days: int = 30) -> int:
         """Delete completed/failed jobs older than the cutoff; returns count."""
-        cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
         query = select(BackgroundJob).where(
             BackgroundJob.status.in_(["completed", "failed"]),
             BackgroundJob.created_at < cutoff,

@@ -23,7 +23,7 @@ MUST check ProjectAccess before allowing estimate generation.
 """
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List
 from uuid import UUID
@@ -168,7 +168,7 @@ class EstimateGenerator:
         """
         logger.info(f"Starting estimate generation for project {project_id} by user {user.email}")
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         # STEP 1: Load project & documents
         project = self.project_repo.get(db, project_id)
@@ -354,7 +354,7 @@ class EstimateGenerator:
         logger.info(f"Estimate persisted: {persisted_estimate.estimate_number}")
 
         # STEP 14: Create audit log
-        duration_seconds = (datetime.utcnow() - start_time).total_seconds()
+        duration_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         audit_log_data = {
             "project_id": project_id,
@@ -542,7 +542,7 @@ class EstimateGenerator:
         # Generate estimate number (MVP: simple incrementing)
         # Production: Get next number from sequence or database
         estimate_number = (
-            f"{project.project_number}-EST-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+            f"{project.project_number}-EST-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
         )
 
         # HIGH FIX: Store actual confidence level percentile, not just P80
