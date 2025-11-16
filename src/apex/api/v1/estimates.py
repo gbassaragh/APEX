@@ -81,7 +81,7 @@ def generate_estimate(
         )
 
     # Verify project exists
-    project = project_repo.get_by_id(db, request.project_id)
+    project = project_repo.get(db, request.project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -269,7 +269,7 @@ def list_project_estimates(
         )
 
     # Verify project exists
-    project = project_repo.get_by_id(db, project_id)
+    project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

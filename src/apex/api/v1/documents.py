@@ -153,7 +153,7 @@ async def upload_document(
         )
 
     # Verify project exists
-    project = project_repo.get_by_id(db, project_id)
+    project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -268,7 +268,7 @@ async def validate_document(
     This is a synchronous operation that may take 30s-2min depending on document size.
     """
     # Get document
-    document = document_repo.get_by_id(db, document_id)
+    document = document_repo.get(db, document_id)
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -479,7 +479,7 @@ def get_document(
     Requires user to have access to the parent project.
     """
     # Get document
-    document = document_repo.get_by_id(db, document_id)
+    document = document_repo.get(db, document_id)
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -520,7 +520,7 @@ def list_project_documents(
         )
 
     # Verify project exists
-    project = project_repo.get_by_id(db, project_id)
+    project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -563,7 +563,7 @@ async def delete_document(
     Requires user to have access to the parent project.
     """
     # Get document
-    document = document_repo.get_by_id(db, document_id)
+    document = document_repo.get(db, document_id)
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -125,7 +125,7 @@ def get_project(
         )
 
     # Get project
-    project = project_repo.get_by_id(db, project_id)
+    project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -159,7 +159,7 @@ def update_project(
         )
 
     # Get project
-    project = project_repo.get_by_id(db, project_id)
+    project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -208,7 +208,7 @@ def delete_project(
         )
 
     # Get project to verify it exists
-    project = project_repo.get_by_id(db, project_id)
+    project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -259,7 +259,7 @@ def grant_project_access(
         )
 
     # Verify project exists
-    project = project_repo.get_by_id(db, project_id)
+    project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -328,7 +328,7 @@ def revoke_project_access(
         )
 
     # Verify project exists
-    project = project_repo.get_by_id(db, project_id)
+    project = project_repo.get(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

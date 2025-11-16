@@ -21,12 +21,11 @@ os.environ.setdefault("AZURE_STORAGE_ACCOUNT", "teststorageaccount")
 os.environ.setdefault("AZURE_AD_TENANT_ID", "00000000-0000-0000-0000-000000000000")
 os.environ.setdefault("AZURE_AD_CLIENT_ID", "00000000-0000-0000-0000-000000000000")
 
-import asyncio
-from typing import AsyncGenerator, Generator
+from typing import Generator
 from uuid import uuid4
 
 import pytest
-from httpx import AsyncClient
+import pytest_asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -77,9 +76,20 @@ def db_session(db_engine) -> Generator[Session, None, None]:
     Create database session for testing.
 
     Automatically rolls back transactions after each test.
+    Seeds AppRole table with standard roles for all tests.
     """
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
     session = SessionLocal()
+
+    # Seed AppRole table with standard roles for testing
+    roles = [
+        AppRole(id=1, role_name="Estimator"),
+        AppRole(id=2, role_name="Manager"),
+        AppRole(id=3, role_name="Auditor"),
+    ]
+    for role in roles:
+        session.add(role)
+    session.commit()
 
     try:
         yield session
@@ -116,19 +126,20 @@ def mock_llm_orchestrator():
 # ============================================================================
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def client(
     db_session: Session,
     mock_blob_storage: MockBlobStorageClient,
     mock_document_parser: MockDocumentParser,
     mock_llm_orchestrator: MockLLMOrchestrator,
     test_user: User,
-) -> AsyncGenerator[AsyncClient, None]:
+):
     """
     Create async HTTP client for testing FastAPI endpoints.
 
     Overrides dependencies to use test database and mock Azure services.
     """
+    from httpx import ASGITransport, AsyncClient
 
     def override_get_db():
         try:
@@ -157,7 +168,9 @@ async def client(
     app.dependency_overrides[get_document_parser] = override_get_document_parser
     app.dependency_overrides[get_llm_orchestrator] = override_get_llm_orchestrator
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True
+    ) as ac:
         yield ac
 
     # Clear overrides
@@ -199,12 +212,8 @@ def test_project(db_session: Session, test_user: User) -> Project:
     db_session.add(project)
     db_session.flush()
 
-    # Create app role (Estimator)
+    # Get Estimator role (seeded by db_session fixture)
     estimator_role = db_session.query(AppRole).filter_by(role_name="Estimator").first()
-    if not estimator_role:
-        estimator_role = AppRole(id=1, role_name="Estimator")
-        db_session.add(estimator_role)
-        db_session.flush()
 
     # Grant user access to project
     access = ProjectAccess(
@@ -233,20 +242,3 @@ def test_document(db_session: Session, test_project: Project, test_user: User) -
     db_session.commit()
     db_session.refresh(document)
     return document
-
-
-# ============================================================================
-# Event Loop Configuration (for async tests)
-# ============================================================================
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """
-    Create event loop for async tests.
-
-    Ensures consistent event loop across all async tests.
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()

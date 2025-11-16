@@ -46,14 +46,14 @@ class TestProjectCreation:
 
         assert project.created_by_id == test_user.id
 
-        # Verify creator has Manager access
+        # Verify creator has Estimator access
         access = db_session.execute(
             select(ProjectAccess)
             .join(AppRole)
             .where(
                 ProjectAccess.project_id == project.id,
                 ProjectAccess.user_id == test_user.id,
-                AppRole.role_name == "Manager",
+                AppRole.role_name == "Estimator",
             )
         ).scalar_one_or_none()
 

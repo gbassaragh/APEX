@@ -80,7 +80,7 @@ async def business_rule_handler(request: Request, exc: BusinessRuleViolation):
         request_id=request_id,
         timestamp=datetime.utcnow(),
     )
-    return JSONResponse(status_code=400, content=payload.model_dump())
+    return JSONResponse(status_code=400, content=payload.model_dump(mode="json"))
 
 
 @app.exception_handler(Exception)
@@ -110,7 +110,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         request_id=request_id,
         timestamp=datetime.utcnow(),
     )
-    return JSONResponse(status_code=500, content=payload.model_dump())
+    return JSONResponse(status_code=500, content=payload.model_dump(mode="json"))
 
 
 # Include API router
