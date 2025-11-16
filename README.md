@@ -27,6 +27,10 @@ APEX automates cost estimation for utility T&D projects through:
 # Install dependencies
 pip install -e .
 
+# Install pre-commit hooks (REQUIRED before committing)
+./.githooks/install-hooks.sh
+# OR: pip install pre-commit && pre-commit install
+
 # Configure environment
 cp .env.example .env
 # Edit .env with your Azure credentials
@@ -43,7 +47,13 @@ pytest tests/
 
 ## Development
 
-See [CLAUDE.md](CLAUDE.md) for detailed development guidance and architecture documentation.
+See [DEVELOPMENT.md](DEVELOPMENT.md) for comprehensive development guide including:
+- Pre-commit hook setup and usage
+- Code quality standards
+- Common development tasks
+- Troubleshooting guide
+
+See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation and implementation requirements.
 
 ## Project Structure
 
