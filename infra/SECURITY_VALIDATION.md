@@ -7,6 +7,8 @@ This document validates that the APEX infrastructure implements zero-trust netwo
 **Security Model**: Zero-Trust with Private Endpoints
 **Compliance**: ISO-NE regulatory requirements, ISO/IEC 27001
 
+> **Related Documentation**: For comprehensive security audit results, see [SECURITY_AUDIT_2025-11-15.md](../docs/archive/assessments/SECURITY_AUDIT_2025-11-15.md) (production-ready assessment with 0 critical issues, approved for deployment).
+
 ---
 
 ## 1. Virtual Network Architecture

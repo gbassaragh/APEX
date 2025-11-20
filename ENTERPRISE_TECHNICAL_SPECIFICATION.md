@@ -2187,13 +2187,12 @@ The APEX platform demonstrates strong architectural foundations, comprehensive s
 
 1. `APEX_Prompt.md` - Original development specification
 2. `CLAUDE.md` - Developer guidance and operational rules
-3. `CRITICAL_PATH_ANALYSIS.md` - Development workflow documentation
+3. `DEPLOYMENT_OPERATIONS_GUIDE.md` - Complete production deployment procedures
 4. `infra/RUNBOOK.md` - Operational procedures
 5. `infra/INCIDENT_RESPONSE.md` - Incident handling procedures
 6. `infra/DISASTER_RECOVERY.md` - DR/BC procedures
 7. `infra/MONITORING_AND_ALERTING.md` - Monitoring configuration
 8. `infra/SECURITY_VALIDATION.md` - Security controls checklist
-9. `infra/PRODUCTION_DEPLOYMENT_CHECKLIST.md` - Go-live checklist
 
 ### Appendix C: Contact Information
 
