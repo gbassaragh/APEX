@@ -169,6 +169,14 @@ async def process_document_validation(
             completeness_score=completeness_score,
             validation_status=validation_status,
         )
+
+        if not updated_document:
+            job_repo.mark_failed(
+                db, job_id, f"Document {document_id} not found during validation update"
+            )
+            db.commit()
+            return
+
         audit_repo.create(
             db,
             {

@@ -131,11 +131,9 @@ class DocumentRepository(BaseRepository[Document]):
         validation_result: Dict[str, Any],
         completeness_score: int,
         validation_status: ValidationStatus,
-    ) -> Document:
+    ) -> Optional[Document]:
         """
         Update document validation result from LLM validation.
-
-        LOW FIX (Codex): Use proper exception for not found case.
 
         Args:
             db: Database session
@@ -145,14 +143,11 @@ class DocumentRepository(BaseRepository[Document]):
             validation_status: Validation status enum value
 
         Returns:
-            Updated document entity
-
-        Raises:
-            ValueError: If document not found (API layer should catch and return 404)
+            Updated document entity, or None if not found
         """
         document = db.get(Document, document_id)
         if not document:
-            raise ValueError(f"Document not found: {document_id}")
+            return None
 
         # Update validation fields
         document.validation_result = validation_result

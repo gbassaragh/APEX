@@ -15,6 +15,7 @@ from apex.models.database import (
     EstimateLineItem,
     EstimateRiskFactor,
 )
+from apex.utils.errors import BusinessRuleViolation
 
 
 class EstimateRepository(BaseRepository[Estimate]):
@@ -69,7 +70,6 @@ class EstimateRepository(BaseRepository[Estimate]):
         db.flush()  # Generate line item IDs
 
         # Second pass: Link parent-child relationships using wbs_code
-        # MEDIUM FIX (Codex): Fail fast if parent reference is invalid
         for item in line_items:
             parent_wbs = getattr(item, "_temp_parent_ref", None)
             if parent_wbs:
@@ -80,7 +80,15 @@ class EstimateRepository(BaseRepository[Estimate]):
                         f"Unknown parent WBS code '{parent_wbs}' for line item: "
                         f"{item.description}. Available WBS codes: {available_codes}"
                     )
-                    raise ValueError(msg)
+                    raise BusinessRuleViolation(
+                        message=msg,
+                        code="INVALID_WBS_HIERARCHY",
+                        details={
+                            "parent_wbs": parent_wbs,
+                            "child_description": item.description,
+                            "available_wbs_codes": available_codes,
+                        },
+                    )
                 item.parent_line_item_id = parent.id
 
         # Add assumptions

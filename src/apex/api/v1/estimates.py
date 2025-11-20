@@ -244,19 +244,20 @@ def list_project_estimates(
 @router.get("/{estimate_id}/export")
 def export_estimate(
     estimate_id: UUID,
-    format: str = Query("json", pattern="^(json|csv|pdf)$", description="Export format"),
+    format: str = Query("json", pattern="^(json)$", description="Export format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     project_repo: ProjectRepository = Depends(get_project_repo),
     estimate_repo: EstimateRepository = Depends(get_estimate_repo),
 ):
     """
-    Export estimate in various formats.
+    Export estimate in JSON format.
 
-    Formats:
-    - json: Full estimate with all details (default)
-    - csv: Flattened line items with cost breakdown
-    - pdf: Professional estimate report (future enhancement)
+    Format:
+    - json: Full estimate with all details including line items, assumptions, exclusions,
+      and risk factors
+
+    Future enhancements will include CSV and PDF export formats.
 
     Requires user to have access to the parent project.
     """
@@ -275,69 +276,46 @@ def export_estimate(
             detail=f"User does not have access to project {estimate.project_id}",
         )
 
-    if format == "json":
-        # Return full estimate as JSON
-        return {
-            "estimate": {
-                "id": str(estimate.id),
-                "project_id": str(estimate.project_id),
-                "estimate_number": estimate.estimate_number,
-                "aace_class": estimate.aace_class.value,
-                "base_cost": float(estimate.base_cost),
-                "contingency_percentage": estimate.contingency_percentage,
-                "p50_cost": float(estimate.p50_cost) if estimate.p50_cost else None,
-                "p80_cost": float(estimate.p80_cost) if estimate.p80_cost else None,
-                "p95_cost": float(estimate.p95_cost) if estimate.p95_cost else None,
-                "narrative": estimate.narrative,
-                "created_at": estimate.created_at.isoformat(),
-            },
-            "line_items": [
-                {
-                    "id": str(item.id),
-                    "parent_line_item_id": str(item.parent_line_item_id)
-                    if item.parent_line_item_id
-                    else None,
-                    "wbs_code": item.wbs_code,
-                    "description": item.description,
-                    "quantity": item.quantity,
-                    "unit_of_measure": item.unit_of_measure,
-                    "unit_cost_total": float(item.unit_cost_total),
-                    "total_cost": float(item.total_cost),
-                }
-                for item in estimate.line_items
-            ],
-            "assumptions": [a.assumption_text for a in estimate.assumptions],
-            "exclusions": [e.exclusion_text for e in estimate.exclusions],
-            "risk_factors": [
-                {
-                    "factor_name": rf.factor_name,
-                    "distribution": rf.distribution,
-                    "param_min": rf.param_min,
-                    "param_likely": rf.param_likely,
-                    "param_max": rf.param_max,
-                }
-                for rf in estimate.risk_factors
-            ],
-        }
-
-    elif format == "csv":
-        # Return flattened line items as CSV
-        # TODO: Implement CSV generation with proper headers
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="CSV export not yet implemented",
-        )
-
-    elif format == "pdf":
-        # Return professional PDF report
-        # TODO: Implement PDF generation
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="PDF export not yet implemented",
-        )
-
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid format: {format}. Must be one of: json, csv, pdf",
-        )
+    # Return full estimate as JSON (only format currently supported)
+    return {
+        "estimate": {
+            "id": str(estimate.id),
+            "project_id": str(estimate.project_id),
+            "estimate_number": estimate.estimate_number,
+            "aace_class": estimate.aace_class.value,
+            "base_cost": float(estimate.base_cost),
+            "contingency_percentage": estimate.contingency_percentage,
+            "p50_cost": float(estimate.p50_cost) if estimate.p50_cost else None,
+            "p80_cost": float(estimate.p80_cost) if estimate.p80_cost else None,
+            "p95_cost": float(estimate.p95_cost) if estimate.p95_cost else None,
+            "narrative": estimate.narrative,
+            "created_at": estimate.created_at.isoformat(),
+        },
+        "line_items": [
+            {
+                "id": str(item.id),
+                "parent_line_item_id": str(item.parent_line_item_id)
+                if item.parent_line_item_id
+                else None,
+                "wbs_code": item.wbs_code,
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_of_measure": item.unit_of_measure,
+                "unit_cost_total": float(item.unit_cost_total),
+                "total_cost": float(item.total_cost),
+            }
+            for item in estimate.line_items
+        ],
+        "assumptions": [a.assumption_text for a in estimate.assumptions],
+        "exclusions": [e.exclusion_text for e in estimate.exclusions],
+        "risk_factors": [
+            {
+                "factor_name": rf.factor_name,
+                "distribution": rf.distribution,
+                "param_min": rf.param_min,
+                "param_likely": rf.param_likely,
+                "param_max": rf.param_max,
+            }
+            for rf in estimate.risk_factors
+        ],
+    }
