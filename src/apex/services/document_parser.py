@@ -441,100 +441,176 @@ class DocumentParser:
         """
         Parse Excel file using openpyxl.
 
+        Extracts sheets, cells, tables, and formulas for LLM analysis.
+        Uses asyncio.to_thread() for CPU-bound openpyxl operations.
+
         Args:
             document_bytes: Excel binary content
             filename: Original filename
 
         Returns:
-            Structured Excel data with sheets and cells
+            Structured Excel data with sheets, cells, and metadata
 
+        Raises:
+            ValueError: If Excel file cannot be parsed
         """
-        from io import BytesIO
 
-        import openpyxl
+        def _sync_parse_excel(doc_bytes: bytes) -> Dict[str, Any]:
+            """Synchronous Excel parsing (runs in thread pool)."""
+            from io import BytesIO
 
-        workbook = openpyxl.load_workbook(BytesIO(document_bytes), data_only=True)
+            import openpyxl
 
-        structured = {
-            "filename": filename,
-            "sheets": [],
-            "metadata": {"format": "excel", "sheet_count": len(workbook.sheetnames)},
-        }
+            try:
+                workbook = openpyxl.load_workbook(BytesIO(doc_bytes), data_only=False)
 
-        for sheet in workbook.worksheets:
-            sheet_data = {
-                "name": sheet.title,
-                "row_count": sheet.max_row,
-                "column_count": sheet.max_column,
-                "rows": [],
-            }
+                structured = {
+                    "filename": filename,
+                    "sheets": [],
+                    "metadata": {
+                        "format": "excel",
+                        "sheet_count": len(workbook.sheetnames),
+                        "workbook_properties": {
+                            "creator": workbook.properties.creator
+                            if hasattr(workbook, "properties")
+                            else None,
+                            "created": workbook.properties.created.isoformat()
+                            if hasattr(workbook, "properties") and workbook.properties.created
+                            else None,
+                        },
+                    },
+                }
 
-            for row in sheet.iter_rows(values_only=True):
-                sheet_data["rows"].append([cell for cell in row])
+                for sheet_name in workbook.sheetnames:
+                    sheet = workbook[sheet_name]
 
-            structured["sheets"].append(sheet_data)
+                    sheet_data = {
+                        "name": sheet_name,
+                        "rows": [],
+                        "tables": [],
+                        "max_row": sheet.max_row,
+                        "max_column": sheet.max_column,
+                    }
 
-        logger.info(
-            f"Parsed Excel file: {filename} - {len(structured['sheets'])} sheets, "
-            f"{structured['sheets'][0]['row_count'] if structured['sheets'] else 0} rows"
-        )
+                    # Extract all non-empty rows
+                    for row in sheet.iter_rows(values_only=True):
+                        # Skip completely empty rows
+                        if any(cell is not None for cell in row):
+                            sheet_data["rows"].append(list(row))
 
-        return structured
+                    # Extract tables if present
+                    if hasattr(sheet, "tables") and sheet.tables:
+                        for table in sheet.tables.values():
+                            table_data = {
+                                "name": table.name if hasattr(table, "name") else None,
+                                "ref": table.ref if hasattr(table, "ref") else None,
+                            }
+                            sheet_data["tables"].append(table_data)
+
+                    structured["sheets"].append(sheet_data)
+
+                return structured
+
+            except Exception as exc:
+                raise ValueError(f"Failed to parse Excel file: {str(exc)}")
+
+        # Run CPU-bound Excel parsing in thread pool
+        try:
+            structured = await asyncio.to_thread(_sync_parse_excel, document_bytes)
+
+            logger.info(
+                f"Parsed Excel file: {filename} - {len(structured['sheets'])} sheets, "
+                f"{sum(len(s['rows']) for s in structured['sheets'])} total rows"
+            )
+
+            return structured
+
+        except ValueError as exc:
+            logger.error(f"Excel parsing error for {filename}: {exc}", exc_info=True)
+            raise
 
     async def _parse_word(self, document_bytes: bytes, filename: str) -> Dict[str, Any]:
         """
         Parse Word document using python-docx.
+
+        Extracts paragraphs, tables, and styles for LLM analysis.
+        Uses asyncio.to_thread() for CPU-bound python-docx operations.
 
         Args:
             document_bytes: Word binary content
             filename: Original filename
 
         Returns:
-            Structured Word data with paragraphs and tables
+            Structured Word data with paragraphs, tables, and metadata
 
+        Raises:
+            ValueError: If Word document cannot be parsed
         """
-        from io import BytesIO
 
-        import docx
+        def _sync_parse_word(doc_bytes: bytes) -> Dict[str, Any]:
+            """Synchronous Word parsing (runs in thread pool)."""
+            from io import BytesIO
 
-        document = docx.Document(BytesIO(document_bytes))
+            import docx
 
-        structured = {
-            "filename": filename,
-            "paragraphs": [],
-            "tables": [],
-            "metadata": {"format": "word"},
-        }
+            try:
+                document = docx.Document(BytesIO(doc_bytes))
 
-        # Extract paragraphs
-        for paragraph in document.paragraphs:
-            if paragraph.text.strip():
-                structured["paragraphs"].append(
-                    {
-                        "text": paragraph.text,
-                        "style": paragraph.style.name if paragraph.style else None,
+                structured = {
+                    "filename": filename,
+                    "paragraphs": [],
+                    "tables": [],
+                    "metadata": {
+                        "format": "word",
+                        "paragraph_count": len(document.paragraphs),
+                        "table_count": len(document.tables),
+                    },
+                }
+
+                # Extract paragraphs with style information
+                for paragraph in document.paragraphs:
+                    if paragraph.text.strip():
+                        structured["paragraphs"].append(
+                            {
+                                "text": paragraph.text,
+                                "style": paragraph.style.name if paragraph.style else None,
+                            }
+                        )
+
+                # Extract tables with cell data
+                for idx, table in enumerate(document.tables):
+                    table_data = {
+                        "table_number": idx + 1,
+                        "row_count": len(table.rows),
+                        "column_count": len(table.columns) if table.rows else 0,
+                        "cells": [],
                     }
-                )
 
-        # Extract tables
-        for idx, table in enumerate(document.tables):
-            table_data = {
-                "table_number": idx + 1,
-                "row_count": len(table.rows),
-                "column_count": len(table.columns) if table.rows else 0,
-                "cells": [],
-            }
-            for row in table.rows:
-                row_data = [cell.text.strip() for cell in row.cells]
-                table_data["cells"].append(row_data)
-            structured["tables"].append(table_data)
+                    for row in table.rows:
+                        row_data = [cell.text.strip() for cell in row.cells]
+                        table_data["cells"].append(row_data)
 
-        logger.info(
-            f"Parsed Word file: {filename} - {len(structured['paragraphs'])} paragraphs, "
-            f"{len(structured['tables'])} tables"
-        )
+                    structured["tables"].append(table_data)
 
-        return structured
+                return structured
+
+            except Exception as exc:
+                raise ValueError(f"Failed to parse Word document: {str(exc)}")
+
+        # Run CPU-bound Word parsing in thread pool
+        try:
+            structured = await asyncio.to_thread(_sync_parse_word, document_bytes)
+
+            logger.info(
+                f"Parsed Word file: {filename} - {len(structured['paragraphs'])} paragraphs, "
+                f"{len(structured['tables'])} tables"
+            )
+
+            return structured
+
+        except ValueError as exc:
+            logger.error(f"Word parsing error for {filename}: {exc}", exc_info=True)
+            raise
 
     async def _handle_parsing_failure(
         self, blob_path: str, filename: str, exception: Exception
