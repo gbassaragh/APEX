@@ -8,11 +8,13 @@ Handles full estimate orchestration workflow including:
 - LLM narrative generation
 """
 import asyncio
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from apex.config import config
 from apex.database.repositories.estimate_repository import EstimateRepository
 from apex.database.repositories.job_repository import JobRepository
 from apex.database.repositories.project_repository import ProjectRepository
@@ -35,6 +37,7 @@ from apex.models.schemas import (
 from apex.services.background_jobs import process_estimate_generation
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/generate", response_model=JobStatusResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -72,11 +75,10 @@ async def generate_estimate(
 
     risk_factors_dto = [rf.model_dump() for rf in request.risk_factors]
 
-    router.logger.info(
-        "Queued estimate generation job %s for project %s", job.id, request.project_id
-    )
-    asyncio.create_task(
-        process_estimate_generation(
+    logger.info("Queued estimate generation job %s for project %s", job.id, request.project_id)
+    if config.TESTING:
+        # In test mode, run inline to avoid background task timing issues
+        await process_estimate_generation(
             job.id,
             request.project_id,
             risk_factors_dto,
@@ -84,7 +86,17 @@ async def generate_estimate(
             request.monte_carlo_iterations,
             current_user.id,
         )
-    )
+    else:
+        asyncio.create_task(
+            process_estimate_generation(
+                job.id,
+                request.project_id,
+                risk_factors_dto,
+                request.confidence_level,
+                request.monte_carlo_iterations,
+                current_user.id,
+            )
+        )
 
     return JobStatusResponse(
         id=job.id,

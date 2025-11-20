@@ -157,9 +157,14 @@ class TestDocumentValidation:
     """Test document validation endpoint."""
 
     async def test_validate_document_success(
-        self, client: AsyncClient, test_document, mock_document_parser, mock_llm_orchestrator
+        self,
+        client: AsyncClient,
+        test_document,
+        mock_document_parser,
+        mock_llm_orchestrator,
+        db_session,
     ):
-        """Test successful document validation workflow."""
+        """Test successful document validation workflow with async job pattern."""
         # Configure mocks
         mock_document_parser.set_parse_result(
             {
@@ -180,39 +185,91 @@ class TestDocumentValidation:
             }
         )
 
+        # NEW: Endpoint returns 202 Accepted with job_id
         response = await client.post(f"/api/v1/documents/{test_document.id}/validate")
 
-        assert response.status_code == 200
+        assert response.status_code == 202  # Accepted, job queued
         result = response.json()
 
-        assert result["document_id"] == str(test_document.id)
-        assert result["validation_status"] == "passed"
-        assert result["completeness_score"] == 85
-        assert result["suitable_for_estimation"] is True
+        # Verify job created
+        assert "id" in result  # job_id
+        assert result["job_type"] == "document_validation"
+        assert result["status"] == "pending"
+
+        job_id = result["id"]
+
+        # In test mode (config.TESTING=True), job runs inline, so check completion
+        job_response = await client.get(f"/api/v1/jobs/{job_id}")
+        assert job_response.status_code == 200
+        job_result = job_response.json()
+
+        # Verify job completed successfully
+        assert job_result["status"] == "completed"
+        assert job_result["result_data"]["document_id"] == str(test_document.id)
+        assert job_result["result_data"]["validation_status"] == "passed"
+        assert job_result["result_data"]["completeness_score"] == 85
+        assert job_result["result_data"]["suitable_for_estimation"] is True
+
+        # Verify document updated in database
+        db_session.refresh(test_document)
+        assert test_document.validation_status == ValidationStatus.PASSED
+        assert test_document.completeness_score == 85
 
     async def test_validate_document_circuit_breaker_open(
-        self, client: AsyncClient, test_document, mock_document_parser
+        self, client: AsyncClient, test_document, mock_document_parser, db_session
     ):
-        """Test circuit breaker open returns 503."""
+        """Test circuit breaker open causes job failure."""
         # Simulate circuit breaker open
         mock_document_parser.set_circuit_breaker_open(True)
 
+        # Job creation succeeds (202), but execution fails
         response = await client.post(f"/api/v1/documents/{test_document.id}/validate")
 
-        assert response.status_code == 503  # Service Unavailable
-        assert "temporarily unavailable" in response.json()["detail"]
+        assert response.status_code == 202  # Accepted
+        result = response.json()
+        job_id = result["id"]
+
+        # In test mode, job runs inline and should fail
+        job_response = await client.get(f"/api/v1/jobs/{job_id}")
+        assert job_response.status_code == 200
+        job_result = job_response.json()
+
+        # Verify job failed due to circuit breaker
+        assert job_result["status"] == "failed"
+        assert (
+            "temporarily unavailable" in job_result["error_message"].lower()
+            or "circuit" in job_result["error_message"].lower()
+        )
+
+        # Verify document marked as FAILED
+        db_session.refresh(test_document)
+        assert test_document.validation_status == ValidationStatus.FAILED
 
     async def test_validate_document_parsing_timeout(
         self, client: AsyncClient, test_document, mock_document_parser, db_session
     ):
-        """Test parsing timeout handling."""
+        """Test parsing timeout causes job failure."""
         # Simulate timeout
         mock_document_parser.set_timeout(True)
 
+        # Job creation succeeds (202), but execution fails
         response = await client.post(f"/api/v1/documents/{test_document.id}/validate")
 
-        assert response.status_code == 500
-        assert "timeout" in response.json()["detail"].lower()
+        assert response.status_code == 202  # Accepted
+        result = response.json()
+        job_id = result["id"]
+
+        # In test mode, job runs inline and should fail
+        job_response = await client.get(f"/api/v1/jobs/{job_id}")
+        assert job_response.status_code == 200
+        job_result = job_response.json()
+
+        # Verify job failed due to timeout
+        assert job_result["status"] == "failed"
+        assert (
+            "timeout" in job_result["error_message"].lower()
+            or "timed out" in job_result["error_message"].lower()
+        )
 
         # Verify document marked as FAILED
         db_session.refresh(test_document)
@@ -226,7 +283,7 @@ class TestDocumentValidation:
         mock_llm_orchestrator,
         db_session,
     ):
-        """Test LLM validation error triggers MANUAL_REVIEW status."""
+        """Test LLM validation error triggers MANUAL_REVIEW status in async job."""
         # Document parsing succeeds
         mock_document_parser.set_parse_result(
             {
@@ -241,23 +298,36 @@ class TestDocumentValidation:
         # LLM validation fails
         mock_llm_orchestrator.set_error("Hallucination detected")
 
+        # Job creation succeeds (202), parsing succeeds, but LLM fails gracefully
         response = await client.post(f"/api/v1/documents/{test_document.id}/validate")
 
-        assert response.status_code == 200  # Success but needs review
+        assert response.status_code == 202  # Accepted
         result = response.json()
+        job_id = result["id"]
 
-        assert result["validation_status"] == "manual_review"
-        assert result["suitable_for_estimation"] is False
-        assert "LLM validation" in result["issues"][0]
+        # In test mode, job runs inline and completes (with MANUAL_REVIEW status)
+        job_response = await client.get(f"/api/v1/jobs/{job_id}")
+        assert job_response.status_code == 200
+        job_result = job_response.json()
 
-        # Verify parsed content was saved
+        # Verify job completed (not failed) but document needs manual review
+        assert job_result["status"] == "completed"
+        assert job_result["result_data"]["validation_status"] == "manual_review"
+        assert job_result["result_data"]["suitable_for_estimation"] is False
+
+        # Verify parsed content was saved and document marked for manual review
         db_session.refresh(test_document)
+        assert test_document.validation_status == ValidationStatus.MANUAL_REVIEW
         assert "parsed_content" in test_document.validation_result
+        assert (
+            "llm_error" in test_document.validation_result
+            or "llm_validation" in test_document.validation_result
+        )
 
     async def test_validate_document_bid_uses_class2(
         self, client: AsyncClient, test_project, test_user, db_session, mock_llm_orchestrator
     ):
-        """Test bid documents use AACE CLASS_2 (auditor persona)."""
+        """Test bid documents use AACE CLASS_2 (auditor persona) in async job."""
         # Create bid document
         bid_document = Document(
             project_id=test_project.id,
@@ -269,18 +339,36 @@ class TestDocumentValidation:
         db_session.add(bid_document)
         db_session.commit()
 
-        await client.post(f"/api/v1/documents/{bid_document.id}/validate")
+        # Trigger validation job
+        response = await client.post(f"/api/v1/documents/{bid_document.id}/validate")
 
-        # Verify LLM was called with CLASS_2
+        assert response.status_code == 202  # Accepted
+        result = response.json()
+        job_id = result["id"]
+
+        # Wait for job completion (inline in test mode)
+        job_response = await client.get(f"/api/v1/jobs/{job_id}")
+        assert job_response.status_code == 200
+
+        # Verify LLM was called with CLASS_2 (bid documents use auditor persona)
         assert mock_llm_orchestrator.last_aace_class == AACEClass.CLASS_2
 
     async def test_validate_document_scope_uses_class4(
         self, client: AsyncClient, test_document, mock_llm_orchestrator
     ):
-        """Test scope documents use AACE CLASS_4 (feasibility persona)."""
-        await client.post(f"/api/v1/documents/{test_document.id}/validate")
+        """Test scope documents use AACE CLASS_4 (feasibility persona) in async job."""
+        # Trigger validation job
+        response = await client.post(f"/api/v1/documents/{test_document.id}/validate")
 
-        # Verify LLM was called with CLASS_4
+        assert response.status_code == 202  # Accepted
+        result = response.json()
+        job_id = result["id"]
+
+        # Wait for job completion (inline in test mode)
+        job_response = await client.get(f"/api/v1/jobs/{job_id}")
+        assert job_response.status_code == 200
+
+        # Verify LLM was called with CLASS_4 (scope documents use feasibility persona)
         assert mock_llm_orchestrator.last_aace_class == AACEClass.CLASS_4
 
 

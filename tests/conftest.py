@@ -12,6 +12,7 @@ import os
 # CRITICAL: Set test environment variables BEFORE any apex modules are imported
 # This prevents Config validation errors during test collection
 os.environ["TESTING"] = "true"  # Signal test mode to connection.py
+os.environ["PYTEST_ASYNCIO_MODE"] = "strict"
 os.environ.setdefault("AZURE_SQL_SERVER", "test-server.database.windows.net")
 os.environ.setdefault("AZURE_SQL_DATABASE", "test-db")
 os.environ.setdefault("AZURE_OPENAI_ENDPOINT", "https://test-openai.openai.azure.com/")
@@ -39,7 +40,15 @@ from apex.dependencies import (
     security,
 )
 from apex.main import app
-from apex.models.database import AppRole, Base, Document, Project, ProjectAccess, User
+from apex.models.database import (  # noqa: F401
+    AppRole,
+    BackgroundJob,
+    Base,
+    Document,
+    Project,
+    ProjectAccess,
+    User,
+)
 from apex.models.enums import ProjectStatus, ValidationStatus
 from tests.fixtures.azure_mocks import (
     MockBlobStorageClient,
@@ -134,13 +143,17 @@ async def client(
     mock_document_parser: MockDocumentParser,
     mock_llm_orchestrator: MockLLMOrchestrator,
     test_user: User,
+    monkeypatch,
 ):
     """
     Create async HTTP client for testing FastAPI endpoints.
 
     Overrides dependencies to use test database and mock Azure services.
+    Monkeypatches background job workers to use test database.
     """
     from httpx import ASGITransport, AsyncClient
+
+    from apex import services
 
     def override_get_db():
         try:
@@ -166,7 +179,18 @@ async def client(
     def override_get_llm_orchestrator():
         return mock_llm_orchestrator
 
-    # Override dependencies
+    # Create SessionLocal factory bound to test engine for background workers
+    def _make_test_session_factory():
+        bind = db_session.get_bind()
+        return sessionmaker(bind=bind, autocommit=False, autoflush=False, future=True)
+
+    # Monkeypatch background job workers to use test database and mocks
+    monkeypatch.setattr(services.background_jobs, "SessionLocal", _make_test_session_factory())
+    monkeypatch.setattr(services.background_jobs, "BlobStorageClient", lambda: mock_blob_storage)
+    monkeypatch.setattr(services.background_jobs, "DocumentParser", lambda: mock_document_parser)
+    monkeypatch.setattr(services.background_jobs, "LLMOrchestrator", lambda: mock_llm_orchestrator)
+
+    # Override FastAPI dependencies
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[security] = override_security

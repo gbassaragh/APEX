@@ -52,11 +52,11 @@ class JobRepository(BaseRepository[BackgroundJob]):
         if not job:
             return None
 
-            job.progress_percent = progress_percent
-            job.current_step = current_step
-            if job.status == "pending":
-                job.status = "running"
-                job.started_at = datetime.now(timezone.utc)
+        job.progress_percent = progress_percent
+        job.current_step = current_step
+        if job.status == "pending":
+            job.status = "running"
+            job.started_at = datetime.now(timezone.utc)
 
         db.flush()
         return job

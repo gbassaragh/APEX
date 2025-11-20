@@ -284,7 +284,11 @@ async def validate_document(
     )
 
     logger.info("Queued document validation job %s for document %s", job.id, document_id)
-    asyncio.create_task(process_document_validation(job.id, document_id, current_user.id))
+    if config.TESTING:
+        # In test mode, run inline to avoid background task timing issues
+        await process_document_validation(job.id, document_id, current_user.id)
+    else:
+        asyncio.create_task(process_document_validation(job.id, document_id, current_user.id))
 
     return JobStatusResponse(
         id=job.id,

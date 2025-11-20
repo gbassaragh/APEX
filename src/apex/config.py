@@ -26,6 +26,7 @@ class Config(BaseSettings):
     APP_VERSION: str = "0.1.0"
     ENVIRONMENT: str = "development"  # "development", "staging", "production"
     DEBUG: bool = False
+    TESTING: bool = False  # Set to True during test runs to run jobs inline
 
     # Azure SQL
     AZURE_SQL_SERVER: str
