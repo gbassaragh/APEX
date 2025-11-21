@@ -65,3 +65,11 @@ local.settings.json
 # Temporary files
 *.tmp
 *.bak
+
+# Test coverage
+.coverage
+coverage.json
+htmlcov/
+.pytest_cache/
+*.cover
+.hypothesis/
